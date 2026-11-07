@@ -1,0 +1,21 @@
+# Executáveis
+*.exe
+*.out
+
+# Arquivos compilados
+*.o
+*.obj
+
+# Pasta de build
+build/
+
+# Configurações locais do VS Code
+.vscode/
+
+# Arquivos temporários
+*.tmp
+*.log
+
+# Sistema operacional
+Thumbs.db
+.DS_Store
