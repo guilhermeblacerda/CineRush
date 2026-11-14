@@ -1,4 +1,5 @@
-
+#include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include "raylib.h"
 #include "game.h"
@@ -17,12 +18,127 @@ static const Color BRANCO = {240, 242, 248, 255};
 static const Color CINZA = {155, 164, 180, 255};
 static const Color VERDE = {75, 190, 130, 255};
 
-/* ============================ AUXILIARES ============================ */
 
+static const char *nomeDesafio(Desafio desafio) {
+    switch (desafio) {
+        case NOITE_DOS_CRITICOS:
+            return "NOITE DOS CRITICOS";
+
+        case SESSAO_DE_SUCESSO:
+            return "SESSAO DE SUCESSO";
+
+        case TEMPO_E_OURO:
+            return "TEMPO E OURO";
+
+        case FESTIVAL_DIVERSIFICADO:
+            return "FESTIVAL DIVERSIFICADO";
+
+        case MARATONA_CINEMATOGRAFICA:
+            return "MARATONA CINEMATOGRAFICA";
+
+        case OBRAS_PRIMAS:
+            return "OBRAS-PRIMAS";
+
+        default:
+            return "DESAFIO";
+    }
+}
+
+static const char *descricaoDesafio(Desafio desafio) {
+    switch (desafio) {
+        case NOITE_DOS_CRITICOS:
+            return "Alcance a maior media de notas.";
+
+        case SESSAO_DE_SUCESSO:
+            return "Escolha os filmes mais populares.";
+
+        case TEMPO_E_OURO:
+            return "Aproxime-se dos 300 minutos.";
+
+        case FESTIVAL_DIVERSIFICADO:
+            return "Equilibre notas e popularidade.";
+
+        case MARATONA_CINEMATOGRAFICA:
+            return "Selecione o maior numero de filmes.";
+
+        case OBRAS_PRIMAS:
+            return "Combine qualidade e popularidade.";
+
+        default:
+            return "";
+    }
+}
+
+static void sortearDesafio(Jogo *jogo) {
+    int sorteado;
+
+    do {
+        sorteado = rand() % TOTAL_DESAFIOS;
+    } while (sorteado == jogo->desafioAnterior);
+
+    jogo->desafioAtual = (Desafio)sorteado;
+    jogo->desafioAnterior = sorteado;
+}
+
+static float calcularPontuacaoDesafio(const Jogo *jogo) {
+    Sessao *atual = jogo->sessao;
+
+    int quantidade = 0;
+    int duracao = 0;
+
+    float somaNotas = 0;
+    float somaPopularidade = 0;
+
+    while (atual != NULL) {
+        quantidade++;
+        duracao += atual->filme.duracao;
+
+        somaNotas += atual->filme.nota;
+        somaPopularidade += atual->filme.popularidade;
+
+        atual = atual->prox;
+    }
+
+    if (quantidade == 0)
+        return 0;
+
+    float mediaNotas = somaNotas / quantidade;
+    float mediaPopularidade = somaPopularidade / quantidade;
+
+    switch (jogo->desafioAtual) {
+
+        case NOITE_DOS_CRITICOS:
+            return (mediaNotas / 10.0f) * 100.0f;
+
+        case SESSAO_DE_SUCESSO:
+            return mediaPopularidade;
+
+        case TEMPO_E_OURO:
+            return ((float)duracao / TEMPO_LIMITE) * 100.0f;
+
+        case FESTIVAL_DIVERSIFICADO:
+            return 100.0f -
+                   (float)abs((int)(mediaNotas * 10 - mediaPopularidade));
+
+        case MARATONA_CINEMATOGRAFICA:
+            return ((float)quantidade / jogo->quantidadeCartaz) * 100.0f;
+
+        case OBRAS_PRIMAS:
+            return ((mediaNotas * 10.0f + mediaPopularidade) / 2.0f);
+
+        default:
+            return 0;
+    }
+}
+
+
+/* ============================ AUXILIARES ============================ */
 static void prepararPartida(Jogo *jogo) {
     carregarFilmes(jogo->cartaz, &jogo->quantidadeCartaz);
     liberarLista(&jogo->sessao);
     inicializarLista(&jogo->sessao);
+
+    sortearDesafio(jogo);
 }
 
 static int filmeJaNaSessao(Sessao *inicio, const char *nome) {
@@ -39,9 +155,20 @@ static int filmeJaNaSessao(Sessao *inicio, const char *nome) {
 /* ============================ ATUALIZAR ============================ */
 
 static void atualizarMenu(Jogo *jogo) {
+    if (IsKeyPressed(KEY_H)) {
+        jogo->telaAtual = TELA_DESAFIOS;
+    }
+
     if (IsKeyPressed(KEY_ENTER)) {
         prepararPartida(jogo);
         jogo->telaAtual = TELA_JOGO;
+    }
+}
+
+static void atualizarDesafios(Jogo *jogo) {
+    if (IsKeyPressed(KEY_BACKSPACE) ||
+        IsKeyPressed(KEY_ENTER)) {
+        jogo->telaAtual = TELA_MENU;
     }
 }
 
@@ -157,7 +284,103 @@ static void desenharMenu(void) {
     desenharBotao(390, 455, 320, 65,
                   "ENTER - COMECAR", VERMELHO);
 
+    DrawText("H - CONHECER OS DESAFIOS",
+         410, 540, 18, DOURADO);
+
     DrawText("ESC - SAIR", 510, 570, 18, CINZA);
+}
+
+
+static void desenharDesafios(void) {
+    ClearBackground(FUNDO);
+
+    DrawText("CINERUSH", 40, 25, 30, VERMELHO);
+
+    DrawText("GUIA DOS DESAFIOS", 350, 110, 35, BRANCO);
+
+    DrawText("Cada partida possui um objetivo diferente.",
+             350, 155, 17, CINZA);
+
+    DrawLine(40, 195, 1060, 195,
+             (Color){55, 63, 82, 255});
+
+    /* DESAFIO 1 */
+    desenharPainel(55, 220, 475, 115);
+
+    DrawText("1. NOITE DOS CRITICOS",
+             75, 235, 20, DOURADO);
+
+    DrawText("Priorize filmes com as maiores notas.",
+             75, 270, 16, BRANCO);
+
+    DrawText("Objetivo: conseguir a maior media de notas.",
+             75, 300, 14, CINZA);
+
+    /* DESAFIO 2 */
+    desenharPainel(570, 220, 475, 115);
+
+    DrawText("2. SESSAO DE SUCESSO",
+             590, 235, 20, DOURADO);
+
+    DrawText("Escolha filmes com alta popularidade.",
+             590, 270, 16, BRANCO);
+
+    DrawText("Objetivo: conseguir a maior popularidade media.",
+             590, 300, 14, CINZA);
+
+    /* DESAFIO 3 */
+    desenharPainel(55, 355, 475, 115);
+
+    DrawText("3. TEMPO E OURO",
+             75, 370, 20, DOURADO);
+
+    DrawText("Aproveite ao maximo os 300 minutos disponiveis.",
+             75, 405, 16, BRANCO);
+
+    DrawText("Objetivo: utilizar o maior tempo possivel.",
+             75, 435, 14, CINZA);
+
+    /* DESAFIO 4 */
+    desenharPainel(570, 355, 475, 115);
+
+    DrawText("4. FESTIVAL DIVERSIFICADO",
+             590, 370, 20, DOURADO);
+
+    DrawText("Equilibre notas e popularidade dos filmes.",
+             590, 405, 16, BRANCO);
+
+    DrawText("Objetivo: manter os dois indicadores equilibrados.",
+             590, 435, 14, CINZA);
+
+    /* DESAFIO 5 */
+    desenharPainel(55, 490, 475, 115);
+
+    DrawText("5. MARATONA CINEMATOGRAFICA",
+             75, 505, 19, DOURADO);
+
+    DrawText("Selecione o maior numero de filmes possivel.",
+             75, 540, 16, BRANCO);
+
+    DrawText("Objetivo: montar a maior quantidade de filmes.",
+             75, 570, 14, CINZA);
+
+    /* DESAFIO 6 */
+    desenharPainel(570, 490, 475, 115);
+
+    DrawText("6. OBRAS-PRIMAS",
+             590, 505, 20, DOURADO);
+
+    DrawText("Combine qualidade e popularidade.",
+             590, 540, 16, BRANCO);
+
+    DrawText("Objetivo: obter uma boa media nos dois indicadores.",
+             590, 570, 14, CINZA);
+
+    DrawLine(40, 635, 1060, 635,
+             (Color){55, 63, 82, 255});
+
+    DrawText("BACKSPACE - VOLTAR AO MENU",
+             390, 660, 16, DOURADO);
 }
 
 /* ============================ PARTIDA ============================ */
@@ -170,9 +393,20 @@ static void desenharPartida(const Jogo *jogo) {
     DrawText("CINERUSH", 40, 22, 34, VERMELHO);
     DrawText("FESTIVAL DE CINEMA", 245, 32, 16, CINZA);
 
+    DrawText("DESAFIO:", 650, 68, 16, DOURADO);
+
+    DrawText(nomeDesafio(jogo->desafioAtual),
+            745, 68, 16, BRANCO);
+
     DrawLine(40, 75, 1060, 75,
              (Color){55, 63, 82, 255});
 
+            
+    DrawText(nomeDesafio(jogo->desafioAtual),
+         740, 150, 18, DOURADO);
+
+    DrawText(descricaoDesafio(jogo->desafioAtual),
+         740, 175, 13, CINZA);
     /* CARTAZ DE FILMES */
 
     desenharPainel(30, 95, 665, 485);
@@ -305,54 +539,74 @@ static void desenharResultado(const Jogo *jogo) {
     DrawLine(40, 75, 1060, 75,
              (Color){55, 63, 82, 255});
 
-    DrawText("FIM DA SESSAO", 360, 135, 45, BRANCO);
+    DrawText("FIM DA SESSAO", 360, 115, 45, BRANCO);
 
-    DrawRectangle(390, 195, 320, 4, DOURADO);
+    DrawRectangle(390, 175, 320, 4, DOURADO);
 
-    desenharPainel(300, 240, 500, 280);
+    desenharPainel(300, 210, 500, 380);
 
     DrawText("RESULTADO DO FESTIVAL",
-             365, 265, 22, DOURADO);
+             365, 230, 22, DOURADO);
 
     DrawText(
         TextFormat("Filmes exibidos: %d",
                    quantidadeSelecionada(jogo->sessao)),
-        370, 330, 21, BRANCO
+        370, 280, 21, BRANCO
     );
 
     DrawText(
         TextFormat("Tempo utilizado: %d / %d min",
                    calcularDuracaoTotal(jogo->sessao),
                    TEMPO_LIMITE),
-        370, 375, 21, BRANCO
+        370, 315, 21, BRANCO
+    );
+
+    DrawText("DESAFIO DA PARTIDA",
+             370, 365, 15, CINZA);
+
+    DrawText(nomeDesafio(jogo->desafioAtual),
+             370, 390, 20, DOURADO);
+
+    DrawText(
+        TextFormat("Pontuacao do desafio: %.1f / 100",
+                   calcularPontuacaoDesafio(jogo)),
+        370, 425, 21, BRANCO
     );
 
     DrawText("PONTUACAO FINAL",
-             370, 430, 15, CINZA);
+             370, 470, 15, CINZA);
 
     DrawText(
-        TextFormat("%.1f", calcularPontuacao(jogo->sessao)),
-        570, 420, 35, DOURADO
+        TextFormat("%.1f", calcularPontuacaoDesafio(jogo)),
+        570, 460, 35, DOURADO
     );
 
-    desenharBotao(390, 550, 320, 55,
+    desenharBotao(390, 610, 320, 55,
                   "ENTER - VOLTAR AO MENU", VERMELHO);
 }
 
 /* ============================ LOOP PRINCIPAL ============================ */
 
 void iniciarJogo(void) {
+    srand((unsigned int)time(NULL));
+
     Jogo jogo = {0};
 
     jogo.telaAtual = TELA_MENU;
+    jogo.desafioAnterior = -1;
+
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(1100, 700, "CineRush");
+    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
-
-        /* ATUALIZAR */
-
         switch (jogo.telaAtual) {
             case TELA_MENU:
                 atualizarMenu(&jogo);
+                break;
+
+            case TELA_DESAFIOS:
+                atualizarDesafios(&jogo);
                 break;
 
             case TELA_JOGO:
@@ -364,18 +618,15 @@ void iniciarJogo(void) {
                 break;
         }
 
-        /* SAIR */
-
-        if (IsKeyPressed(KEY_ESCAPE))
-            break;
-
-        /* DESENHAR */
-
         BeginDrawing();
 
         switch (jogo.telaAtual) {
             case TELA_MENU:
                 desenharMenu();
+                break;
+
+            case TELA_DESAFIOS:
+                desenharDesafios();
                 break;
 
             case TELA_JOGO:
@@ -391,4 +642,5 @@ void iniciarJogo(void) {
     }
 
     liberarLista(&jogo.sessao);
+    CloseWindow();
 }
