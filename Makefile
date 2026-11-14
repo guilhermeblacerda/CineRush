@@ -1,5 +1,5 @@
 
-CC = gcc
+CC = C:/raylib/w64devkit/bin/gcc.exe
 
 RAYLIB_PATH = C:/raylib/raylib
 
@@ -7,7 +7,7 @@ CFLAGS = -Wall -Wextra -std=c99 -I$(RAYLIB_PATH)/src
 
 LDFLAGS = -L$(RAYLIB_PATH)/src -lraylib -lopengl32 -lgdi32 -lwinmm
 
-SRC = $(shell find src -name "*.c")
+SRC = $(wildcard src/*.c)
 
 OBJ = $(SRC:.c=.o)
 
@@ -25,6 +25,6 @@ run: $(TARGET)
 	./$(TARGET)
 
 clean:
-	del /Q $(OBJ) $(TARGET) 2>NUL
+	rm -f $(OBJ) $(TARGET)
 
 .PHONY: all run clean
