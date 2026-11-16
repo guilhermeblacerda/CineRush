@@ -26,3 +26,10 @@ Execute o programa gerado para iniciar o jogo.
 - **Backspace:** remover o último filme selecionado.
 - **D / N / P:** ordenar por duração, nota ou popularidade.
 - **Esc:** sair do jogo.
+
+
+## Desafios
+
+Cada partida apresenta um desafio sorteado entre seis objetivos: Noite dos Críticos, Sessão de Sucesso, Tempo é Ouro, Festival Diversificado, Maratona Cinematográfica e Obras-Primas.
+
+A pontuação final é calculada de acordo com o objetivo sorteado. No menu inicial, pressione **H** para consultar os desafios.
