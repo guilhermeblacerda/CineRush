@@ -1,25 +1,38 @@
+
 #ifndef GAME_H
 #define GAME_H
 
 #include "filmes.h"
 #include "lista.h"
 
-#define TEMPO_LIMITE 300   /* minutos de tela disponíveis na noite */
+#define TEMPO_LIMITE 300
 
-// As telas possíveis: o jogo está sempre em exatamente uma delas */
 typedef enum {
     TELA_MENU,
+    TELA_DESAFIOS,
     TELA_JOGO,
     TELA_RESULTADO
 } Tela;
 
-/* Tudo que o jogo precisa lembrar entre um frame e outro --> 
-junta as duas estruturas num lugar só. O cartaz é um vetor porque é fixo. A sessão é uma lista porque cresce e encolhe. */
+typedef enum {
+    NOITE_DOS_CRITICOS,
+    SESSAO_DE_SUCESSO,
+    TEMPO_E_OURO,
+    FESTIVAL_DIVERSIFICADO,
+    MARATONA_CINEMATOGRAFICA,
+    OBRAS_PRIMAS,
+    TOTAL_DESAFIOS
+} Desafio;
+
+
 typedef struct {
     Tela telaAtual;
-    Filme cartaz[MAX_FILMES];   // os filmes disponíveis (vetor) */
+    Filme cartaz[MAX_FILMES];
     int quantidadeCartaz;
-    Sessao *sessao;             /* os filmes escolhidos (lista encadeada) */
+    Sessao *sessao;
+
+    Desafio desafioAtual;
+    int desafioAnterior;
 } Jogo;
 
 void iniciarJogo(void);
