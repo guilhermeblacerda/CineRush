@@ -47,6 +47,7 @@ static void encerrarAtendimento(Atendimento *atendimento) {
         return;
 
     atendimento->naoAtendidos = atendimento->fila.quantidade;
+    atendimento->pontos -= atendimento->naoAtendidos * PENALIDADE_CLIENTE;
     liberarFila(&atendimento->fila);
     atendimento->tempoRestante = 0.0f;
     atendimento->encerrado = 1;
@@ -96,20 +97,37 @@ void atualizarAtendimento(Atendimento *atendimento, const Sessao *sessao, float 
     while (restante > 0.0 && !atendimento->encerrado) {
         double passo = restante;
         double ateChegada = INTERVALO_CHEGADA - atendimento->tempoChegada;
+        Cliente *cliente = atendimento->fila.inicio != NULL
+                         ? &atendimento->fila.inicio->cliente : NULL;
 
         if (passo > atendimento->tempoRestante)
             passo = atendimento->tempoRestante;
         if (passo > ateChegada)
             passo = ateChegada;
+        if (cliente != NULL && passo > cliente->paciencia)
+            passo = cliente->paciencia;
 
         atendimento->tempoRestante -= passo;
         atendimento->tempoChegada += passo;
         atendimento->tempoAviso -= passo;
+        if (cliente != NULL)
+            cliente->paciencia -= passo;
         restante -= passo;
 
         if (atendimento->tempoRestante <= 0.0001f) {
             encerrarAtendimento(atendimento);
             break;
+        }
+
+        if (cliente != NULL && cliente->paciencia <= 0.0001f) {
+            int id = cliente->id;
+            desenfileirar(&atendimento->fila, NULL);
+            atendimento->desistentes++;
+            atendimento->pontos -= PENALIDADE_CLIENTE;
+            snprintf(atendimento->aviso, sizeof(atendimento->aviso),
+                     "Cliente %d perdeu a paciencia: -%.0f pontos.",
+                     id, PENALIDADE_CLIENTE);
+            atendimento->tempoAviso = 2.5f;
         }
 
         if (atendimento->tempoChegada >= INTERVALO_CHEGADA - 0.0001f) {
@@ -119,8 +137,9 @@ void atualizarAtendimento(Atendimento *atendimento, const Sessao *sessao, float 
     }
 }
 
-int atenderCliente(Atendimento *atendimento) {
-    if (atendimento == NULL || atendimento->encerrado)
+int atenderCliente(Atendimento *atendimento, int oferecerPipoca) {
+    if (atendimento == NULL || atendimento->encerrado ||
+        (oferecerPipoca != 0 && oferecerPipoca != 1))
         return 0;
 
     Cliente cliente;
@@ -128,9 +147,27 @@ int atenderCliente(Atendimento *atendimento) {
     if (!desenfileirar(&atendimento->fila, &cliente))
         return 0;
 
-    atendimento->atendidos++;
-    snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-             "Cliente %d atendido. O proximo da fila foi chamado.", cliente.id);
+    int correto = cliente.querPipoca == oferecerPipoca;
+
+    if (correto) {
+        atendimento->atendidos++;
+        atendimento->pontos += PONTOS_ACERTO;
+        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
+                 "Cliente %d atendido corretamente: +%.0f pontos.",
+                 cliente.id, PONTOS_ACERTO);
+    } else {
+        atendimento->errados++;
+        atendimento->pontos -= PENALIDADE_CLIENTE;
+        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
+                 "Pedido do cliente %d estava errado: -%.0f pontos.",
+                 cliente.id, PENALIDADE_CLIENTE);
+    }
+
     atendimento->tempoAviso = 2.5f;
-    return 1;
+    return correto ? 1 : -1;
+}
+
+int metaAtendimentoCumprida(const Atendimento *atendimento) {
+    return atendimento != NULL && atendimento->encerrado &&
+           atendimento->atendidos >= META_ATENDIMENTOS;
 }

@@ -106,7 +106,7 @@ static void sortearDesafio(Jogo *jogo) {
     jogo->desafioAnterior = novo;
 }
 
-static float calcularPontuacaoFinal(const Jogo *jogo) {
+static float calcularPontuacaoProgramacao(const Jogo *jogo) {
     int quantidade = quantidadeSelecionada(jogo->sessao);
     float pontuacao = calcularPontuacao(jogo->sessao);
 
@@ -164,12 +164,18 @@ static float calcularPontuacaoFinal(const Jogo *jogo) {
     return pontuacao;
 }
 
+static float calcularPontuacaoFinal(const Jogo *jogo) {
+    float pontos = calcularPontuacaoProgramacao(jogo) + jogo->atendimento.pontos;
+    return pontos > 0.0f ? pontos : 0.0f;
+}
+
 static int verificarVitoria(const Jogo *jogo) {
     int quantidade = quantidadeSelecionada(jogo->sessao);
     float pontuacao = calcularPontuacaoFinal(jogo);
 
     return quantidade >= jogo->objetivoFilmes &&
-           pontuacao >= jogo->pontuacaoMinima;
+           pontuacao >= jogo->pontuacaoMinima &&
+           metaAtendimentoCumprida(&jogo->atendimento);
 }
 
 static void atualizarMenu(Jogo *jogo) {
@@ -249,6 +255,8 @@ static void atualizarPartida(Jogo *jogo) {
 }
 
 static void atualizarTelaAtendimento(Jogo *jogo) {
+    const Cliente *anterior = primeiroCliente(&jogo->atendimento.fila);
+    int idAnterior = anterior != NULL ? anterior->id : -1;
     atualizarAtendimento(&jogo->atendimento, jogo->sessao, GetFrameTime());
 
     if (jogo->atendimento.encerrado) {
@@ -257,8 +265,14 @@ static void atualizarTelaAtendimento(Jogo *jogo) {
         return;
     }
 
-    if (IsKeyPressed(KEY_SPACE))
-        atenderCliente(&jogo->atendimento);
+    const Cliente *atual = primeiroCliente(&jogo->atendimento.fila);
+    if (atual == NULL || atual->id != idAnterior)
+        return;
+
+    if (IsKeyPressed(KEY_ONE))
+        atenderCliente(&jogo->atendimento, 0);
+    else if (IsKeyPressed(KEY_TWO))
+        atenderCliente(&jogo->atendimento, 1);
 }
 
 static void atualizarResultado(Jogo *jogo) {
@@ -528,7 +542,11 @@ static void desenharPartida(const Jogo *jogo) {
     DrawText("BACKSPACE REMOVER", 225, 670, 13, CINZA);
     DrawText("D / N / P ORDENAR", 480, 670, 13, CINZA);
     DrawText("ENTER ABRIR CINEMA", 790, 670, 13, DOURADO);
-    DrawText(jogo->avisoProgramacao, 735, 560, 12, VERMELHO);
+    if (jogo->avisoProgramacao[0] != '\0')
+        DrawText(jogo->avisoProgramacao, 735, 560, 12, VERMELHO);
+    else
+        DrawText(TextFormat("DEPOIS: ACERTE %d ATENDIMENTOS", META_ATENDIMENTOS),
+                 735, 560, 12, CINZA);
 }
 
 
@@ -615,87 +633,73 @@ static void desenharTelaAtendimento(const Jogo *jogo) {
                              470, 196, 26, 565, BRANCO);
         DrawText(cliente->querPipoca ? "INGRESSO + PIPOCA" : "APENAS INGRESSO",
                  470, 238, 27, DOURADO);
-        DrawText("Atendimento simples: pressione ESPACO.", 470, 282, 17, CINZA);
-        desenharBotao(470, 320, 575, 45, "ESPACO - ATENDER", VERMELHO);
+        float proporcao = cliente->paciencia / PACIENCIA_CLIENTE;
+        if (proporcao < 0.0f) proporcao = 0.0f;
+        if (proporcao > 1.0f) proporcao = 1.0f;
+        DrawText(TextFormat("PACIENCIA: %.1f s", cliente->paciencia),
+                 470, 278, 15, CINZA);
+        DrawRectangle(470, 299, 575, 8, CARD);
+        DrawRectangle(470, 299, (int)(575 * proporcao), 8,
+                      proporcao > 0.3f ? VERDE : VERMELHO);
+        desenharBotao(470, 324, 260, 42, "1 - SO INGRESSO", VERMELHO);
+        desenharBotao(745, 324, 300, 42, "2 - INGRESSO + PIPOCA", VERMELHO);
     } else {
         DrawText("Aguardando o proximo cliente...", 470, 205, 23, BRANCO);
         DrawText("As chegadas acontecem automaticamente.", 470, 247, 17, CINZA);
     }
 
-    DrawText(TextFormat("ATENDIDOS: %d", atendimento->atendidos),
-             45, 580, 21, VERDE);
-    DrawText(TextFormat("NA FILA: %d", atendimento->fila.quantidade),
-             45, 611, 19, BRANCO);
+    DrawText(TextFormat("ACERTOS: %d | META: %d", atendimento->atendidos,
+                        META_ATENDIMENTOS), 45, 574, 20, VERDE);
+    DrawText(TextFormat("ERROS: %d | DESISTENCIAS: %d", atendimento->errados,
+                        atendimento->desistentes), 45, 600, 15, CINZA);
+    DrawText(TextFormat("SALDO: %+.0f PONTOS", atendimento->pontos),
+             45, 621, 16, DOURADO);
     desenharFilaEspera(atendimento);
     DrawLine(40, 641, 1060, 641, CINZA);
 
     if (atendimento->tempoAviso > 0.0f)
         desenharTextoAjustado(atendimento->aviso, 45, 652, 18, 1010, DOURADO);
 
-    DrawText("ESPACO - ATENDER O PRIMEIRO | O EXPEDIENTE TERMINA AUTOMATICAMENTE",
+    DrawText("1 / 2 ATENDER | SO O PRIMEIRO PERDE PACIENCIA | RESTANTES AO FECHAR: -10 CADA",
              45, 681, 13, CINZA);
 }
 
 static void desenharResultado(const Jogo *jogo) {
+    const Atendimento *atendimento = &jogo->atendimento;
     ClearBackground(FUNDO);
-
     DrawText("CINERUSH", 40, 25, 30, VERMELHO);
-    DrawLine(40, 75, 1060, 75, (Color){55, 63, 82, 255});
+    DrawLine(40, 75, 1060, 75, CINZA);
+    DrawText("FIM DO EXPEDIENTE", 315, 104, 39, BRANCO);
+    desenharPainel(210, 168, 680, 415);
 
-    DrawText("FIM DA SESSAO", 360, 105, 45, BRANCO);
-    DrawRectangle(390, 165, 320, 4, DOURADO);
-
-    desenharPainel(300, 195, 500, 350);
-
-    DrawText("RESULTADO DO FESTIVAL",
-             365, 215, 22, DOURADO);
-
-    DrawText(
-        TextFormat("Nivel: %d", jogo->nivel),
-        370, 260, 19, BRANCO
-    );
-
-    DrawText(
-        TextFormat("Filmes exibidos: %d",
-                   quantidadeSelecionada(jogo->sessao)),
-        370, 295, 19, BRANCO
-    );
-
-    DrawText(
-        TextFormat("Tempo: %d / %d min",
-                   calcularDuracaoTotal(jogo->sessao),
-                   jogo->tempoLimite),
-        370, 330, 19, BRANCO
-    );
-
-    DrawText(
-        TextFormat("Pontuacao: %.1f",
-                   calcularPontuacaoFinal(jogo)),
-        370, 365, 22, DOURADO
-    );
-
-    DrawText(
-        TextFormat("Meta: %.1f pontos e %d filmes",
-                   jogo->pontuacaoMinima,
-                   jogo->objetivoFilmes),
-        370, 405, 16, CINZA
-    );
-
-    if (jogo->partidaVencida) {
-        DrawText("DESAFIO CONCLUIDO!",
-                 370, 450, 22, VERDE);
-    } else {
-        DrawText("OBJETIVO NAO ALCANCADO",
-                 370, 450, 22, VERMELHO);
-    }
-
-    DrawText(TextFormat("Clientes atendidos: %d | Sem atendimento: %d",
-                        jogo->atendimento.atendidos,
-                        jogo->atendimento.naoAtendidos),
-             340, 510, 15, CINZA);
-
-    desenharBotao(390, 565, 320, 55,
-                  "ENTER - CONTINUAR", VERMELHO);
+    DrawText(TextFormat("NIVEL %d | %s", jogo->nivel,
+                        nomesDesafios[jogo->desafioAtual]),
+             240, 190, 18, DOURADO);
+    DrawText(TextFormat("Programacao: %d filmes | %d / %d minutos",
+                        quantidadeSelecionada(jogo->sessao),
+                        calcularDuracaoTotal(jogo->sessao), jogo->tempoLimite),
+             240, 228, 19, BRANCO);
+    DrawText(TextFormat("Pontos dos filmes e desafio: %.1f",
+                        calcularPontuacaoProgramacao(jogo)),
+             240, 265, 20, BRANCO);
+    DrawText(TextFormat("Acertos: %d | Erros: %d | Desistencias: %d",
+                        atendimento->atendidos, atendimento->errados,
+                        atendimento->desistentes),
+             240, 305, 19, BRANCO);
+    DrawText(TextFormat("Sem atendimento ao fechar: %d",
+                        atendimento->naoAtendidos),
+             240, 338, 18, CINZA);
+    DrawText(TextFormat("Saldo do atendimento: %+.0f pontos", atendimento->pontos),
+             240, 372, 20, DOURADO);
+    DrawText(TextFormat("TOTAL FINAL: %.1f", calcularPontuacaoFinal(jogo)),
+             240, 415, 30, DOURADO);
+    DrawText(TextFormat("METAS: %d filmes | %.0f pontos | %d atendimentos corretos",
+                        jogo->objetivoFilmes, jogo->pontuacaoMinima,
+                        META_ATENDIMENTOS),
+             240, 463, 16, CINZA);
+    DrawText(jogo->partidaVencida ? "DESAFIO CONCLUIDO!" : "OBJETIVO NAO ALCANCADO",
+             240, 511, 25, jogo->partidaVencida ? VERDE : VERMELHO);
+    desenharBotao(390, 610, 320, 50, "ENTER - CONTINUAR", VERMELHO);
 }
 
 static void desenharNome(const Jogo *jogo) {
