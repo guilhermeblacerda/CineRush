@@ -4,6 +4,8 @@
 
 #include "filmes.h"
 #include "lista.h"
+#include "ranking.h"
+
 
 #define TEMPO_LIMITE 300
 
@@ -11,7 +13,9 @@ typedef enum {
     TELA_MENU,
     TELA_DESAFIOS,
     TELA_JOGO,
-    TELA_RESULTADO
+    TELA_RESULTADO,
+    TELA_NOME,
+    TELA_RANKING
 } Tela;
 
 typedef enum {
@@ -30,9 +34,12 @@ typedef struct {
     Filme cartaz[MAX_FILMES];
     int quantidadeCartaz;
     Sessao *sessao;
-
     Desafio desafioAtual;
     int desafioAnterior;
+    Jogador ranking[MAX_RANKING];
+    int quantidadeRanking;
+    char nomeJogador[TAM_NOME];
+    int tamanhoNome;    
 } Jogo;
 
 void iniciarJogo(void);
