@@ -5,6 +5,7 @@
 #include "filmes.h"
 #include "lista.h"
 #include "ranking.h"
+#include "atendimento.h"
 
 
 #define TEMPO_LIMITE 300
@@ -13,6 +14,7 @@ typedef enum {
     TELA_MENU,
     TELA_DESAFIOS,
     TELA_JOGO,
+    TELA_ATENDIMENTO,
     TELA_RESULTADO,
     TELA_NOME,
     TELA_RANKING
@@ -44,7 +46,9 @@ typedef struct {
     int tempoLimite;
     int objetivoFilmes;
     float pontuacaoMinima;
-    int partidaVencida;   
+    int partidaVencida;
+    Atendimento atendimento;
+    char avisoProgramacao[100];
 } Jogo;
 
 void iniciarJogo(void);

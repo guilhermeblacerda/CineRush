@@ -79,6 +79,9 @@ static void prepararPartida(Jogo *jogo) {
     liberarLista(&jogo->sessao);
     inicializarLista(&jogo->sessao);
     jogo->partidaVencida = 0;
+    liberarAtendimento(&jogo->atendimento);
+    inicializarAtendimento(&jogo->atendimento);
+    jogo->avisoProgramacao[0] = '\0';
 }
 
 static int filmeJaNaSessao(Sessao *inicio, const char *nome) {
@@ -212,7 +215,8 @@ static void atualizarPartida(Jogo *jogo) {
 
             if (cabeNoTempo &&
                 !filmeJaNaSessao(jogo->sessao, escolhido.nome)) {
-                adicionarFilme(&jogo->sessao, escolhido);
+                if (adicionarFilme(&jogo->sessao, escolhido))
+                    jogo->avisoProgramacao[0] = '\0';
             }
         }
     }
@@ -234,9 +238,27 @@ static void atualizarPartida(Jogo *jogo) {
         ordenarPorPopularidade(jogo->cartaz, jogo->quantidadeCartaz);
 
     if (IsKeyPressed(KEY_ENTER)) {
+        if (jogo->sessao == NULL) {
+            strcpy(jogo->avisoProgramacao, "Selecione pelo menos um filme.");
+        } else if (iniciarAtendimento(&jogo->atendimento, jogo->sessao)) {
+            jogo->telaAtual = TELA_ATENDIMENTO;
+        } else {
+            strcpy(jogo->avisoProgramacao, "Nao foi possivel iniciar o atendimento.");
+        }
+    }
+}
+
+static void atualizarTelaAtendimento(Jogo *jogo) {
+    atualizarAtendimento(&jogo->atendimento, jogo->sessao, GetFrameTime());
+
+    if (jogo->atendimento.encerrado) {
         jogo->partidaVencida = verificarVitoria(jogo);
         jogo->telaAtual = TELA_RESULTADO;
+        return;
     }
+
+    if (IsKeyPressed(KEY_SPACE))
+        atenderCliente(&jogo->atendimento);
 }
 
 static void atualizarResultado(Jogo *jogo) {
@@ -360,7 +382,7 @@ static void desenharDesafios(const Jogo *jogo) {
         float x = 130 + coluna * 440;
         float y = 155 + linha * 135;
 
-        Color cor = jogo->desafioAtual == i ? VERMELHO : CARD;
+        Color cor = jogo->desafioAtual == (Desafio)i ? VERMELHO : CARD;
 
         DrawRectangleRounded(
             (Rectangle){x, y, 400, 105},
@@ -505,7 +527,113 @@ static void desenharPartida(const Jogo *jogo) {
     DrawText("1-8 ESCOLHER", 40, 670, 13, CINZA);
     DrawText("BACKSPACE REMOVER", 225, 670, 13, CINZA);
     DrawText("D / N / P ORDENAR", 480, 670, 13, CINZA);
-    DrawText("ENTER FINALIZAR", 790, 670, 13, DOURADO);
+    DrawText("ENTER ABRIR CINEMA", 790, 670, 13, DOURADO);
+    DrawText(jogo->avisoProgramacao, 735, 560, 12, VERMELHO);
+}
+
+
+static void desenharTextoAjustado(const char *texto, int x, int y,
+                                int tamanho, int largura, Color cor) {
+    while (tamanho > 10 && MeasureText(texto, tamanho) > largura)
+        tamanho--;
+    DrawText(texto, x, y, tamanho, cor);
+}
+
+static void desenharCinemaEstatico(void) {
+    desenharPainel(30, 95, 400, 460);
+    DrawText("CINEMA ABERTO", 112, 115, 24, DOURADO);
+    DrawRectangleRounded((Rectangle){65, 165, 330, 160}, 0.05f, 8, BRANCO);
+    DrawRectangle(65, 165, 18, 160, VERMELHO);
+    DrawRectangle(377, 165, 18, 160, VERMELHO);
+    DrawText("CINERUSH", 137, 213, 31, VERMELHO);
+    DrawText("SESSAO EM CARTAZ", 131, 262, 17, PAINEL);
+
+    for (int linha = 0; linha < 3; linha++) {
+        for (int coluna = 0; coluna < 6; coluna++) {
+            float x = 65 + coluna * 55;
+            float y = 352 + linha * 47;
+            DrawRectangleRounded((Rectangle){x, y, 40, 28}, 0.25f, 8, VERMELHO);
+            DrawRectangle((int)x - 3, (int)y + 22, 46, 8, DOURADO);
+        }
+    }
+
+    DrawText("BILHETERIA + PIPOCA", 114, 510, 19, BRANCO);
+}
+
+static void desenharFilaEspera(const Atendimento *atendimento) {
+    desenharPainel(450, 405, 620, 220);
+    int esperando = atendimento->fila.quantidade;
+    const NoCliente *no = atendimento->fila.inicio;
+
+    if (no != NULL) {
+        esperando--;
+        no = no->prox;
+    }
+
+    DrawText(TextFormat("FILA FIFO | %d AGUARDANDO", esperando),
+             470, 420, 19, DOURADO);
+
+    int linha = 0;
+    while (no != NULL && linha < 5) {
+        int y = 453 + linha * 28;
+        DrawText(TextFormat("#%02d", no->cliente.id), 470, y, 16, BRANCO);
+        desenharTextoAjustado(no->cliente.filmeDesejado.nome,
+                             525, y, 16, 310, CINZA);
+        DrawText(no->cliente.querPipoca ? "COM PIPOCA" : "SO INGRESSO",
+                 895, y, 14, BRANCO);
+        no = no->prox;
+        linha++;
+    }
+
+    if (esperando == 0)
+        DrawText("Ninguem aguardando. Novos clientes chegarao.",
+                 470, 475, 16, CINZA);
+    if (esperando > 5)
+        DrawText(TextFormat("+ %d clientes na fila", esperando - 5),
+                 470, 598, 13, CINZA);
+}
+
+static void desenharTelaAtendimento(const Jogo *jogo) {
+    const Atendimento *atendimento = &jogo->atendimento;
+    const Cliente *cliente = primeiroCliente(&atendimento->fila);
+    ClearBackground(FUNDO);
+    DrawText("CINERUSH", 40, 22, 34, VERMELHO);
+    DrawText("ETAPA 2 | ATENDIMENTO", 245, 32, 18, BRANCO);
+    DrawText(TextFormat("FECHA EM %.1f s", atendimento->tempoRestante),
+             815, 25, 23, DOURADO);
+    DrawText(TextFormat("Proxima chegada: %.1f s",
+                        INTERVALO_CHEGADA - atendimento->tempoChegada),
+             815, 55, 14, CINZA);
+    DrawLine(40, 80, 1060, 80, CINZA);
+    desenharCinemaEstatico();
+    desenharPainel(450, 95, 620, 290);
+    DrawText("ATENDA O PRIMEIRO DA FILA", 470, 112, 22, DOURADO);
+
+    if (cliente != NULL) {
+        DrawText(TextFormat("CLIENTE #%02d", cliente->id), 470, 158, 22, BRANCO);
+        desenharTextoAjustado(cliente->filmeDesejado.nome,
+                             470, 196, 26, 565, BRANCO);
+        DrawText(cliente->querPipoca ? "INGRESSO + PIPOCA" : "APENAS INGRESSO",
+                 470, 238, 27, DOURADO);
+        DrawText("Atendimento simples: pressione ESPACO.", 470, 282, 17, CINZA);
+        desenharBotao(470, 320, 575, 45, "ESPACO - ATENDER", VERMELHO);
+    } else {
+        DrawText("Aguardando o proximo cliente...", 470, 205, 23, BRANCO);
+        DrawText("As chegadas acontecem automaticamente.", 470, 247, 17, CINZA);
+    }
+
+    DrawText(TextFormat("ATENDIDOS: %d", atendimento->atendidos),
+             45, 580, 21, VERDE);
+    DrawText(TextFormat("NA FILA: %d", atendimento->fila.quantidade),
+             45, 611, 19, BRANCO);
+    desenharFilaEspera(atendimento);
+    DrawLine(40, 641, 1060, 641, CINZA);
+
+    if (atendimento->tempoAviso > 0.0f)
+        desenharTextoAjustado(atendimento->aviso, 45, 652, 18, 1010, DOURADO);
+
+    DrawText("ESPACO - ATENDER O PRIMEIRO | O EXPEDIENTE TERMINA AUTOMATICAMENTE",
+             45, 681, 13, CINZA);
 }
 
 static void desenharResultado(const Jogo *jogo) {
@@ -560,6 +688,11 @@ static void desenharResultado(const Jogo *jogo) {
         DrawText("OBJETIVO NAO ALCANCADO",
                  370, 450, 22, VERMELHO);
     }
+
+    DrawText(TextFormat("Clientes atendidos: %d | Sem atendimento: %d",
+                        jogo->atendimento.atendidos,
+                        jogo->atendimento.naoAtendidos),
+             340, 510, 15, CINZA);
 
     desenharBotao(390, 565, 320, 55,
                   "ENTER - CONTINUAR", VERMELHO);
@@ -640,6 +773,7 @@ void iniciarJogo(void) {
     jogo.desafioAnterior = -1;
     jogo.desafioAtual = NOITE_DOS_CRITICOS;
 
+    inicializarAtendimento(&jogo.atendimento);
     configurarDificuldade(&jogo);
     carregarRanking(jogo.ranking, &jogo.quantidadeRanking);
 
@@ -655,6 +789,10 @@ void iniciarJogo(void) {
 
             case TELA_JOGO:
                 atualizarPartida(&jogo);
+                break;
+
+            case TELA_ATENDIMENTO:
+                atualizarTelaAtendimento(&jogo);
                 break;
 
             case TELA_RESULTADO:
@@ -692,6 +830,10 @@ void iniciarJogo(void) {
                 desenharPartida(&jogo);
                 break;
 
+            case TELA_ATENDIMENTO:
+                desenharTelaAtendimento(&jogo);
+                break;
+
             case TELA_RESULTADO:
                 desenharResultado(&jogo);
                 break;
@@ -712,6 +854,7 @@ void iniciarJogo(void) {
         EndDrawing();
     }
 
+    liberarAtendimento(&jogo.atendimento);
     liberarLista(&jogo.sessao);
     CloseWindow();
 }
