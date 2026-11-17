@@ -39,7 +39,12 @@ typedef struct {
     Jogador ranking[MAX_RANKING];
     int quantidadeRanking;
     char nomeJogador[TAM_NOME];
-    int tamanhoNome;    
+    int tamanhoNome; 
+    int nivel;
+    int tempoLimite;
+    int objetivoFilmes;
+    float pontuacaoMinima;
+    int partidaVencida;   
 } Jogo;
 
 void iniciarJogo(void);

@@ -5,6 +5,9 @@
 #include "raylib.h"
 #include "game.h"
 
+#define LARGURA 1100
+#define ALTURA 700
+
 static const Color FUNDO = {15, 18, 29, 255};
 static const Color PAINEL = {25, 30, 45, 255};
 static const Color CARD = {34, 40, 57, 255};
@@ -24,12 +27,12 @@ static const char *nomesDesafios[TOTAL_DESAFIOS] = {
 };
 
 static const char *descricoesDesafios[TOTAL_DESAFIOS] = {
-    "Monte uma sessao com filmes de notas altas.",
+    "Priorize filmes com notas elevadas.",
     "Escolha filmes com alta popularidade.",
-    "Aproveite ao maximo os 300 minutos disponiveis.",
-    "Equilibre a qualidade e a popularidade dos filmes.",
-    "Selecione a maior quantidade de filmes possivel.",
-    "Combine filmes com nota e popularidade elevadas."
+    "Aproveite o tempo disponivel.",
+    "Equilibre nota e popularidade.",
+    "Selecione a maior quantidade de filmes.",
+    "Combine filmes de alta nota e popularidade."
 };
 
 static void desenharPainel(float x, float y, float largura, float altura) {
@@ -38,7 +41,8 @@ static void desenharPainel(float x, float y, float largura, float altura) {
     DrawRectangleLinesEx(r, 1, (Color){55, 63, 82, 255});
 }
 
-static void desenharBotao(float x, float y, float largura, float altura, const char *texto, Color cor) {
+static void desenharBotao(float x, float y, float largura, float altura,
+                          const char *texto, Color cor) {
     Rectangle r = {x, y, largura, altura};
     DrawRectangleRounded(r, 0.2f, 10, cor);
 
@@ -51,30 +55,30 @@ static void desenharBotao(float x, float y, float largura, float altura, const c
              tamanho, BRANCO);
 }
 
-static void desenharBarraTempo(int tempoUsado) {
-    float proporcao = (float)tempoUsado / TEMPO_LIMITE;
-
-    if (proporcao > 1.0f)
-        proporcao = 1.0f;
-
-    if (proporcao < 0.0f)
-        proporcao = 0.0f;
-
-    DrawRectangleRounded((Rectangle){40, 610, 480, 14}, 0.5f, 10, CARD);
-
-    if (proporcao > 0) {
-        DrawRectangleRounded(
-            (Rectangle){40, 610, 480 * proporcao, 14},
-            0.5f, 10,
-            proporcao >= 0.9f ? VERMELHO : VERDE
-        );
+static void configurarDificuldade(Jogo *jogo) {
+    if (jogo->nivel <= 1) {
+        jogo->nivel = 1;
+        jogo->tempoLimite = 400;
+        jogo->objetivoFilmes = 2;
+        jogo->pontuacaoMinima = 100.0f;
+    } else if (jogo->nivel == 2) {
+        jogo->tempoLimite = 370;
+        jogo->objetivoFilmes = 3;
+        jogo->pontuacaoMinima = 180.0f;
+    } else {
+        jogo->nivel = 3;
+        jogo->tempoLimite = 350;
+        jogo->objetivoFilmes = 4;
+        jogo->pontuacaoMinima = 260.0f;
     }
 }
 
 static void prepararPartida(Jogo *jogo) {
+    configurarDificuldade(jogo);
     carregarFilmes(jogo->cartaz, &jogo->quantidadeCartaz);
     liberarLista(&jogo->sessao);
     inicializarLista(&jogo->sessao);
+    jogo->partidaVencida = 0;
 }
 
 static int filmeJaNaSessao(Sessao *inicio, const char *nome) {
@@ -89,73 +93,86 @@ static int filmeJaNaSessao(Sessao *inicio, const char *nome) {
 }
 
 static void sortearDesafio(Jogo *jogo) {
-    int novoDesafio;
+    int novo;
 
     do {
-        novoDesafio = rand() % TOTAL_DESAFIOS;
-    } while (TOTAL_DESAFIOS > 1 && novoDesafio == jogo->desafioAnterior);
+        novo = rand() % TOTAL_DESAFIOS;
+    } while (TOTAL_DESAFIOS > 1 && novo == jogo->desafioAnterior);
 
-    jogo->desafioAtual = (Desafio)novoDesafio;
-    jogo->desafioAnterior = novoDesafio;
+    jogo->desafioAtual = (Desafio)novo;
+    jogo->desafioAnterior = novo;
 }
 
 static float calcularPontuacaoFinal(const Jogo *jogo) {
-    float pontos = calcularPontuacao(jogo->sessao);
     int quantidade = quantidadeSelecionada(jogo->sessao);
-    int tempo = calcularDuracaoTotal(jogo->sessao);
+    float pontuacao = calcularPontuacao(jogo->sessao);
 
-    float somaNotas = 0;
-    float somaPopularidade = 0;
+    if (quantidade == 0)
+        return 0.0f;
+
+    float somaNotas = 0.0f;
+    float somaPopularidade = 0.0f;
     int obrasPrimas = 0;
 
     for (Sessao *no = jogo->sessao; no != NULL; no = no->prox) {
         somaNotas += no->filme.nota;
         somaPopularidade += no->filme.popularidade;
 
-        if (no->filme.nota >= 8.5 && no->filme.popularidade >= 85)
+        if (no->filme.nota >= 8.5f &&
+            no->filme.popularidade >= 85) {
             obrasPrimas++;
+        }
     }
 
-    if (quantidade == 0)
-        return pontos;
+    float mediaNota = somaNotas / quantidade;
+    float mediaPopularidade = somaPopularidade / quantidade;
+    int tempo = calcularDuracaoTotal(jogo->sessao);
 
     switch (jogo->desafioAtual) {
         case NOITE_DOS_CRITICOS:
-            pontos += (somaNotas / quantidade) * 10;
+            pontuacao += mediaNota * 10.0f;
             break;
 
         case SESSAO_DE_SUCESSO:
-            pontos += (somaPopularidade / quantidade) * 0.5f;
+            pontuacao += mediaPopularidade * 0.5f;
             break;
 
         case TEMPO_E_OURO:
-            pontos += ((float)tempo / TEMPO_LIMITE) * 100;
+            pontuacao += ((float)tempo / jogo->tempoLimite) * 100.0f;
             break;
 
         case FESTIVAL_DIVERSIFICADO:
-            pontos += ((somaNotas / quantidade) * 5) +
-                      ((somaPopularidade / quantidade) * 0.25f);
+            pontuacao += mediaNota * 5.0f +
+                         mediaPopularidade * 0.25f;
             break;
 
         case MARATONA_CINEMATOGRAFICA:
-            pontos += quantidade * 20;
+            pontuacao += quantidade * 20.0f;
             break;
 
         case OBRAS_PRIMAS:
-            pontos += obrasPrimas * 50;
+            pontuacao += obrasPrimas * 50.0f;
             break;
 
         default:
             break;
     }
 
-    return pontos;
+    return pontuacao;
+}
+
+static int verificarVitoria(const Jogo *jogo) {
+    int quantidade = quantidadeSelecionada(jogo->sessao);
+    float pontuacao = calcularPontuacaoFinal(jogo);
+
+    return quantidade >= jogo->objetivoFilmes &&
+           pontuacao >= jogo->pontuacaoMinima;
 }
 
 static void atualizarMenu(Jogo *jogo) {
     if (IsKeyPressed(KEY_ENTER)) {
-        prepararPartida(jogo);
         sortearDesafio(jogo);
+        prepararPartida(jogo);
         jogo->telaAtual = TELA_JOGO;
     }
 
@@ -167,8 +184,14 @@ static void atualizarMenu(Jogo *jogo) {
 }
 
 static void atualizarDesafios(Jogo *jogo) {
+    for (int i = 0; i < TOTAL_DESAFIOS; i++) {
+        if (IsKeyPressed(KEY_ONE + i)) {
+            jogo->desafioAtual = (Desafio)i;
+        }
+    }
+
     if (IsKeyPressed(KEY_ENTER)) {
-        sortearDesafio(jogo);
+        jogo->desafioAnterior = jogo->desafioAtual;
         prepararPartida(jogo);
         jogo->telaAtual = TELA_JOGO;
     }
@@ -181,9 +204,13 @@ static void atualizarPartida(Jogo *jogo) {
     for (int i = 0; i < jogo->quantidadeCartaz; i++) {
         if (IsKeyPressed(KEY_ONE + i)) {
             Filme escolhido = jogo->cartaz[i];
+
             int tempoUsado = calcularDuracaoTotal(jogo->sessao);
 
-            if (tempoUsado + escolhido.duracao <= TEMPO_LIMITE &&
+            int cabeNoTempo =
+                tempoUsado + escolhido.duracao <= jogo->tempoLimite;
+
+            if (cabeNoTempo &&
                 !filmeJaNaSessao(jogo->sessao, escolhido.nome)) {
                 adicionarFilme(&jogo->sessao, escolhido);
             }
@@ -206,8 +233,10 @@ static void atualizarPartida(Jogo *jogo) {
     if (IsKeyPressed(KEY_P))
         ordenarPorPopularidade(jogo->cartaz, jogo->quantidadeCartaz);
 
-    if (IsKeyPressed(KEY_ENTER))
+    if (IsKeyPressed(KEY_ENTER)) {
+        jogo->partidaVencida = verificarVitoria(jogo);
         jogo->telaAtual = TELA_RESULTADO;
+    }
 }
 
 static void atualizarResultado(Jogo *jogo) {
@@ -222,7 +251,8 @@ static void atualizarNome(Jogo *jogo) {
     int caractere = GetCharPressed();
 
     while (caractere > 0) {
-        if (caractere >= 32 && caractere <= 125 &&
+        if (caractere >= 32 &&
+            caractere <= 125 &&
             jogo->tamanhoNome < TAM_NOME - 1) {
             jogo->nomeJogador[jogo->tamanhoNome] = (char)caractere;
             jogo->tamanhoNome++;
@@ -237,7 +267,11 @@ static void atualizarNome(Jogo *jogo) {
         jogo->nomeJogador[jogo->tamanhoNome] = '\0';
     }
 
-    if (IsKeyPressed(KEY_ENTER) && jogo->tamanhoNome > 0) {
+    if (IsKeyPressed(KEY_ENTER)) {
+        if (jogo->tamanhoNome == 0) {
+            strcpy(jogo->nomeJogador, "Jogador");
+        }
+
         adicionarRanking(
             jogo->ranking,
             &jogo->quantidadeRanking,
@@ -246,50 +280,102 @@ static void atualizarNome(Jogo *jogo) {
         );
 
         salvarRanking(jogo->ranking, jogo->quantidadeRanking);
-        jogo->telaAtual = TELA_RANKING;
+
+        if (jogo->partidaVencida && jogo->nivel < 3)
+            jogo->nivel++;
+
+        jogo->telaAtual = TELA_MENU;
     }
 }
 
 static void atualizarRanking(Jogo *jogo) {
-    if (IsKeyPressed(KEY_ENTER))
+    if (IsKeyPressed(KEY_ENTER) ||
+        IsKeyPressed(KEY_BACKSPACE)) {
         jogo->telaAtual = TELA_MENU;
+    }
 }
 
-static void desenharMenu(void) {
+static void desenharBarraTempo(int tempoUsado, int tempoLimite) {
+    float proporcao = (float)tempoUsado / tempoLimite;
+
+    if (proporcao > 1.0f)
+        proporcao = 1.0f;
+
+    if (proporcao < 0.0f)
+        proporcao = 0.0f;
+
+    DrawRectangleRounded(
+        (Rectangle){40, 610, 480, 14},
+        0.5f, 10, CARD
+    );
+
+    if (proporcao > 0) {
+        DrawRectangleRounded(
+            (Rectangle){40, 610, 480 * proporcao, 14},
+            0.5f, 10,
+            proporcao >= 0.9f ? VERMELHO : VERDE
+        );
+    }
+}
+
+static void desenharMenu(const Jogo *jogo) {
     ClearBackground(FUNDO);
 
     DrawCircle(900, 120, 180, (Color){210, 43, 55, 15});
     DrawCircle(180, 600, 150, (Color){232, 184, 75, 12});
 
-    DrawText("CINERUSH", 380, 185, 85, VERMELHO);
-    DrawRectangle(430, 290, 240, 4, DOURADO);
+    DrawText("CINERUSH", 380, 150, 85, VERMELHO);
+    DrawRectangle(430, 255, 240, 4, DOURADO);
 
-    DrawText("SEU FESTIVAL. SUAS ESCOLHAS.", 395, 325, 25, BRANCO);
+    DrawText("SEU FESTIVAL. SUAS ESCOLHAS.",
+             395, 290, 25, BRANCO);
+
     DrawText("Monte a programacao perfeita para sua noite de cinema.",
-             280, 375, 19, CINZA);
+             280, 340, 19, CINZA);
 
-    desenharBotao(390, 455, 320, 65, "ENTER - COMECAR", VERMELHO);
+    DrawText(
+        TextFormat("NIVEL ATUAL: %d", jogo->nivel),
+        470, 405, 22, DOURADO
+    );
 
-    DrawText("H - DESAFIOS", 420, 550, 18, DOURADO);
-    DrawText("R - RANKING", 590, 550, 18, DOURADO);
-    DrawText("ESC - SAIR", 510, 610, 18, CINZA);
+    desenharBotao(390, 450, 320, 55,
+                  "ENTER - COMECAR", VERMELHO);
+
+    DrawText("H - DESAFIOS", 300, 550, 17, CINZA);
+    DrawText("R - RANKING", 490, 550, 17, CINZA);
+    DrawText("ESC - SAIR", 680, 550, 17, CINZA);
 }
 
-static void desenharDesafios(void) {
+static void desenharDesafios(const Jogo *jogo) {
     ClearBackground(FUNDO);
 
-    DrawText("CINERUSH", 40, 25, 34, VERMELHO);
-    DrawText("DESAFIOS DO FESTIVAL", 350, 120, 35, BRANCO);
-
-    desenharPainel(220, 210, 660, 270);
+    DrawText("DESAFIOS", 420, 35, 42, VERMELHO);
+    DrawText("ESCOLHA UM DESAFIO PARA SUA SESSAO",
+             330, 90, 17, CINZA);
 
     for (int i = 0; i < TOTAL_DESAFIOS; i++) {
-        DrawText(nomesDesafios[i], 270, 235 + i * 35, 18, DOURADO);
-        DrawText(descricoesDesafios[i], 270, 258 + i * 35, 14, CINZA);
+        int coluna = i % 2;
+        int linha = i / 2;
+
+        float x = 130 + coluna * 440;
+        float y = 155 + linha * 135;
+
+        Color cor = jogo->desafioAtual == i ? VERMELHO : CARD;
+
+        DrawRectangleRounded(
+            (Rectangle){x, y, 400, 105},
+            0.12f, 10, cor
+        );
+
+        DrawText(TextFormat("%d - %s", i + 1, nomesDesafios[i]),
+                 (int)x + 20, (int)y + 18, 18, BRANCO);
+
+        DrawText(descricoesDesafios[i],
+                 (int)x + 20, (int)y + 55, 14, BRANCO);
     }
 
-    desenharBotao(390, 535, 320, 55, "ENTER - JOGAR", VERMELHO);
-    DrawText("BACKSPACE - VOLTAR", 430, 620, 17, CINZA);
+    DrawText("1-6 SELECIONAR     ENTER CONFIRMAR     BACKSPACE VOLTAR",
+             180, 615, 17, CINZA);
 }
 
 static void desenharPartida(const Jogo *jogo) {
@@ -298,15 +384,23 @@ static void desenharPartida(const Jogo *jogo) {
     DrawText("CINERUSH", 40, 22, 34, VERMELHO);
     DrawText("FESTIVAL DE CINEMA", 245, 32, 16, CINZA);
 
+    DrawText(
+    TextFormat("DESAFIO: %s", nomesDesafios[jogo->desafioAtual]),
+    245, 53, 14, DOURADO
+    );
+
+    DrawText(
+        TextFormat("NIVEL %d", jogo->nivel),
+        850, 25, 20, DOURADO
+    );
+
     DrawLine(40, 75, 1060, 75, (Color){55, 63, 82, 255});
 
-    DrawText(nomesDesafios[jogo->desafioAtual], 40, 85, 18, DOURADO);
-    DrawText(descricoesDesafios[jogo->desafioAtual], 40, 108, 13, CINZA);
+    desenharPainel(30, 95, 665, 485);
 
-    desenharPainel(30, 135, 665, 445);
-
-    DrawText("CARTAZ DE FILMES", 55, 150, 24, BRANCO);
-    DrawText("ESCOLHA OS FILMES PARA SUA SESSAO", 55, 180, 13, CINZA);
+    DrawText("CARTAZ DE FILMES", 55, 112, 24, BRANCO);
+    DrawText("ESCOLHA OS FILMES PARA SUA SESSAO",
+             55, 143, 13, CINZA);
 
     for (int i = 0; i < jogo->quantidadeCartaz; i++) {
         Filme f = jogo->cartaz[i];
@@ -315,57 +409,96 @@ static void desenharPartida(const Jogo *jogo) {
         int linha = i / 2;
 
         float x = 50 + coluna * 315;
-        float y = 210 + linha * 78;
+        float y = 180 + linha * 92;
 
-        DrawRectangleRounded((Rectangle){x, y, 295, 68}, 0.12f, 10, CARD);
-        DrawRectangleRounded((Rectangle){x, y, 5, 68}, 0.5f, 8, VERMELHO);
+        Rectangle card = {x, y, 295, 80};
+
+        DrawRectangleRounded(card, 0.12f, 10, CARD);
+        DrawRectangleRounded(
+            (Rectangle){x, y, 5, 80},
+            0.5f, 8, VERMELHO
+        );
+
         DrawCircle(x + 27, y + 25, 15, VERMELHO);
 
-        DrawText(TextFormat("%d", i + 1), (int)x + 22, (int)y + 16, 18, BRANCO);
-        DrawText(f.nome, (int)x + 52, (int)y + 8, 17, BRANCO);
+        DrawText(TextFormat("%d", i + 1),
+                 (int)x + 22, (int)y + 16, 18, BRANCO);
 
-        DrawText(TextFormat("%d min  |  Nota %.1f", f.duracao, f.nota),
-                 (int)x + 52, (int)y + 32, 14, CINZA);
+        DrawText(f.nome,
+                 (int)x + 52, (int)y + 10, 17, BRANCO);
 
-        DrawText(TextFormat("Popularidade: %d", f.popularidade),
-                 (int)x + 52, (int)y + 49, 12, DOURADO);
+        DrawText(
+            TextFormat("%d min | Nota %.1f",
+                       f.duracao, f.nota),
+            (int)x + 52, (int)y + 37, 14, CINZA
+        );
+
+        DrawText(
+            TextFormat("Popularidade: %d", f.popularidade),
+            (int)x + 52, (int)y + 57, 12, DOURADO
+        );
     }
 
-    desenharPainel(715, 135, 355, 445);
+    desenharPainel(715, 95, 355, 485);
 
-    DrawText("SUA PROGRAMACAO", 740, 150, 22, BRANCO);
-    DrawText("FILMES SELECIONADOS", 740, 180, 13, CINZA);
+    DrawText("SUA PROGRAMACAO", 740, 112, 22, BRANCO);
+    DrawText("FILMES SELECIONADOS", 740, 143, 13, CINZA);
 
     int quantidade = quantidadeSelecionada(jogo->sessao);
     int linha = 0;
 
     if (jogo->sessao == NULL) {
-        DrawText("Nenhum filme selecionado.", 740, 240, 16, CINZA);
+        DrawText("Nenhum filme selecionado.",
+                 740, 210, 16, CINZA);
+        DrawText("Escolha filmes no cartaz ao lado.",
+                 740, 240, 13, CINZA);
     }
 
-    for (Sessao *no = jogo->sessao; no != NULL; no = no->prox) {
-        float y = 210 + linha * 42;
+    for (Sessao *no = jogo->sessao;
+         no != NULL;
+         no = no->prox) {
+        float y = 180 + linha * 45;
 
-        DrawRectangleRounded((Rectangle){735, y, 315, 36}, 0.15f, 8, CARD);
-        DrawText(no->filme.nome, 748, (int)y + 5, 14, BRANCO);
-        DrawText(TextFormat("%d min", no->filme.duracao),
-                 748, (int)y + 21, 11, DOURADO);
+        DrawRectangleRounded(
+            (Rectangle){735, y, 315, 38},
+            0.15f, 8, CARD
+        );
+
+        DrawText(no->filme.nome,
+                 748, (int)y + 5, 14, BRANCO);
+
+        DrawText(
+            TextFormat("%d min", no->filme.duracao),
+            748, (int)y + 22, 11, DOURADO
+        );
 
         linha++;
     }
 
     int tempoUsado = calcularDuracaoTotal(jogo->sessao);
-    float pontos = calcularPontuacao(jogo->sessao);
+    float pontos = calcularPontuacaoFinal(jogo);
 
     DrawText("DURACAO DA SESSAO", 40, 590, 14, CINZA);
-    DrawText(TextFormat("%d / %d MIN", tempoUsado, TEMPO_LIMITE),
-             40, 630, 22, BRANCO);
 
-    desenharBarraTempo(tempoUsado);
+    DrawText(
+        TextFormat("%d / %d MIN", tempoUsado, jogo->tempoLimite),
+        40, 630, 22, BRANCO
+    );
+
+    desenharBarraTempo(tempoUsado, jogo->tempoLimite);
 
     DrawText("PONTUACAO", 565, 590, 14, CINZA);
     DrawText(TextFormat("%.1f", pontos), 565, 620, 30, DOURADO);
-    DrawText(TextFormat("%d FILMES", quantidade), 850, 610, 20, BRANCO);
+
+    DrawText(TextFormat("%d FILMES", quantidade),
+             850, 610, 20, BRANCO);
+
+    DrawText(
+        TextFormat("META: %d FILMES | %.0f PONTOS",
+                   jogo->objetivoFilmes,
+                   jogo->pontuacaoMinima),
+        735, 535, 13, DOURADO
+    );
 
     DrawLine(40, 655, 1060, 655, (Color){55, 63, 82, 255});
 
@@ -381,87 +514,133 @@ static void desenharResultado(const Jogo *jogo) {
     DrawText("CINERUSH", 40, 25, 30, VERMELHO);
     DrawLine(40, 75, 1060, 75, (Color){55, 63, 82, 255});
 
-    DrawText("FIM DA SESSAO", 360, 115, 45, BRANCO);
-    DrawRectangle(390, 175, 320, 4, DOURADO);
+    DrawText("FIM DA SESSAO", 360, 105, 45, BRANCO);
+    DrawRectangle(390, 165, 320, 4, DOURADO);
 
-    desenharPainel(300, 210, 500, 350);
+    desenharPainel(300, 195, 500, 350);
 
-    DrawText("RESULTADO DO FESTIVAL", 365, 235, 22, DOURADO);
-    DrawText(nomesDesafios[jogo->desafioAtual], 365, 280, 17, BRANCO);
+    DrawText("RESULTADO DO FESTIVAL",
+             365, 215, 22, DOURADO);
 
-    DrawText(TextFormat("Filmes exibidos: %d",
-                        quantidadeSelecionada(jogo->sessao)),
-             370, 340, 21, BRANCO);
+    DrawText(
+        TextFormat("Nivel: %d", jogo->nivel),
+        370, 260, 19, BRANCO
+    );
 
-    DrawText(TextFormat("Tempo utilizado: %d / %d min",
-                        calcularDuracaoTotal(jogo->sessao), TEMPO_LIMITE),
-             370, 385, 21, BRANCO);
+    DrawText(
+        TextFormat("Filmes exibidos: %d",
+                   quantidadeSelecionada(jogo->sessao)),
+        370, 295, 19, BRANCO
+    );
 
-    DrawText("PONTUACAO FINAL", 370, 440, 15, CINZA);
+    DrawText(
+        TextFormat("Tempo: %d / %d min",
+                   calcularDuracaoTotal(jogo->sessao),
+                   jogo->tempoLimite),
+        370, 330, 19, BRANCO
+    );
 
-    DrawText(TextFormat("%.1f", calcularPontuacaoFinal(jogo)),
-             570, 430, 35, DOURADO);
+    DrawText(
+        TextFormat("Pontuacao: %.1f",
+                   calcularPontuacaoFinal(jogo)),
+        370, 365, 22, DOURADO
+    );
 
-    desenharBotao(390, 590, 320, 55, "ENTER - CONTINUAR", VERMELHO);
+    DrawText(
+        TextFormat("Meta: %.1f pontos e %d filmes",
+                   jogo->pontuacaoMinima,
+                   jogo->objetivoFilmes),
+        370, 405, 16, CINZA
+    );
+
+    if (jogo->partidaVencida) {
+        DrawText("DESAFIO CONCLUIDO!",
+                 370, 450, 22, VERDE);
+    } else {
+        DrawText("OBJETIVO NAO ALCANCADO",
+                 370, 450, 22, VERMELHO);
+    }
+
+    desenharBotao(390, 565, 320, 55,
+                  "ENTER - CONTINUAR", VERMELHO);
 }
 
 static void desenharNome(const Jogo *jogo) {
     ClearBackground(FUNDO);
 
-    DrawText("CINERUSH", 40, 25, 34, VERMELHO);
-    DrawText("REGISTRAR PONTUACAO", 300, 160, 35, BRANCO);
+    DrawText("REGISTRAR RESULTADO", 300, 150, 40, BRANCO);
+    DrawText("Digite seu nome para o ranking:",
+             350, 260, 20, CINZA);
 
-    desenharPainel(300, 250, 500, 190);
+    DrawRectangleRounded(
+        (Rectangle){300, 310, 500, 65},
+        0.1f, 10, CARD
+    );
 
-    DrawText("Digite seu nome:", 350, 285, 20, CINZA);
+    DrawText(jogo->nomeJogador, 325, 330, 25, BRANCO);
 
-    DrawRectangleRounded((Rectangle){350, 330, 400, 50}, 0.1f, 8, CARD);
-    DrawText(jogo->nomeJogador, 365, 343, 22, BRANCO);
+    DrawText("ENTER - CONFIRMAR",
+             440, 430, 18, DOURADO);
 
-    DrawText("ENTER - CONFIRMAR", 420, 490, 18, DOURADO);
-    DrawText("BACKSPACE - APAGAR", 420, 525, 15, CINZA);
+    DrawText("BACKSPACE - APAGAR",
+             440, 465, 15, CINZA);
 }
 
 static void desenharTelaRanking(const Jogo *jogo) {
     ClearBackground(FUNDO);
 
-    DrawText("CINERUSH", 40, 25, 34, VERMELHO);
-    DrawText("RANKING", 430, 100, 45, DOURADO);
+    DrawText("RANKING", 430, 35, 42, VERMELHO);
 
-    desenharPainel(250, 175, 600, 420);
-
-    DrawText("POS.", 290, 200, 16, CINZA);
-    DrawText("JOGADOR", 390, 200, 16, CINZA);
-    DrawText("PONTUACAO", 700, 200, 16, CINZA);
+    DrawText("TOP 10 JOGADORES",
+             405, 95, 18, CINZA);
 
     for (int i = 0; i < jogo->quantidadeRanking; i++) {
-        int y = 245 + i * 32;
+        float y = 145 + i * 43;
 
-        DrawText(TextFormat("%d", i + 1), 300, y, 18,
-                 i == 0 ? DOURADO : BRANCO);
+        DrawRectangleRounded(
+            (Rectangle){250, y, 600, 36},
+            0.15f, 8, CARD
+        );
 
-        DrawText(jogo->ranking[i].nome, 390, y, 18, BRANCO);
+        DrawText(
+            TextFormat("%d.", i + 1),
+            270, (int)y + 8, 17, DOURADO
+        );
 
-        DrawText(TextFormat("%.1f", jogo->ranking[i].pontuacao),
-                 700, y, 18, DOURADO);
+        DrawText(
+            jogo->ranking[i].nome,
+            330, (int)y + 8, 17, BRANCO
+        );
+
+        DrawText(
+            TextFormat("%.1f", jogo->ranking[i].pontuacao),
+            720, (int)y + 8, 17, VERDE
+        );
     }
 
-    if (jogo->quantidadeRanking == 0)
-        DrawText("Nenhuma pontuacao registrada.", 390, 270, 18, CINZA);
+    if (jogo->quantidadeRanking == 0) {
+        DrawText("Ainda nao existem pontuacoes registradas.",
+                 310, 300, 19, CINZA);
+    }
 
-    DrawText("ENTER - VOLTAR AO MENU", 410, 635, 18, CINZA);
+    DrawText("ENTER OU BACKSPACE - VOLTAR",
+             365, 625, 18, CINZA);
 }
 
 void iniciarJogo(void) {
     Jogo jogo = {0};
 
-    InitWindow(1100, 700, "CineRush");
+    InitWindow(LARGURA, ALTURA, "CineRush");
     SetTargetFPS(60);
 
-    jogo.telaAtual = TELA_MENU;
-    jogo.desafioAnterior = -1;
-
     srand((unsigned int)time(NULL));
+
+    jogo.telaAtual = TELA_MENU;
+    jogo.nivel = 1;
+    jogo.desafioAnterior = -1;
+    jogo.desafioAtual = NOITE_DOS_CRITICOS;
+
+    configurarDificuldade(&jogo);
     carregarRanking(jogo.ranking, &jogo.quantidadeRanking);
 
     while (!WindowShouldClose()) {
@@ -469,20 +648,29 @@ void iniciarJogo(void) {
             case TELA_MENU:
                 atualizarMenu(&jogo);
                 break;
+
             case TELA_DESAFIOS:
                 atualizarDesafios(&jogo);
                 break;
+
             case TELA_JOGO:
                 atualizarPartida(&jogo);
                 break;
+
             case TELA_RESULTADO:
                 atualizarResultado(&jogo);
                 break;
+
             case TELA_NOME:
                 atualizarNome(&jogo);
                 break;
+
             case TELA_RANKING:
                 atualizarRanking(&jogo);
+                break;
+
+            default:
+                jogo.telaAtual = TELA_MENU;
                 break;
         }
 
@@ -493,22 +681,31 @@ void iniciarJogo(void) {
 
         switch (jogo.telaAtual) {
             case TELA_MENU:
-                desenharMenu();
+                desenharMenu(&jogo);
                 break;
+
             case TELA_DESAFIOS:
-                desenharDesafios();
+                desenharDesafios(&jogo);
                 break;
+
             case TELA_JOGO:
                 desenharPartida(&jogo);
                 break;
+
             case TELA_RESULTADO:
                 desenharResultado(&jogo);
                 break;
+
             case TELA_NOME:
                 desenharNome(&jogo);
                 break;
+
             case TELA_RANKING:
                 desenharTelaRanking(&jogo);
+                break;
+
+            default:
+                ClearBackground(FUNDO);
                 break;
         }
 

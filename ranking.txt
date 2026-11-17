@@ -1,2 +1,5 @@
+Guilherme;430.2
 Guilherme;417.3
+Guilherme;392.1
+Guilherme;362.0
 Joao;242.0
