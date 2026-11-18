@@ -12,13 +12,16 @@ static void limparPedido(Atendimento *a) {
 
 static void configurarAtendimento(Atendimento *a, int nivel) {
     a->nivel = nivel < 1 ? 1 : (nivel > 3 ? 3 : nivel);
-    a->intervaloChegada = 8.0;
-    a->pacienciaInicial = 15.0f;
-    a->maxIngressos = 2;
-    a->grupoMinimo = 1;
-    a->grupoMaximo = 2;
-    a->penalidadeErro = 10.0f;
-    a->penalidadeFila = 5.0f;
+
+    const float paciencia[] = {15.0f, 12.0f, 10.0f};
+
+    a->intervaloChegada = 9.0 - a->nivel;
+    a->pacienciaInicial = paciencia[a->nivel - 1];
+    a->maxIngressos = a->nivel + 1;
+    a->grupoMinimo = a->nivel == 3 ? 2 : 1;
+    a->grupoMaximo = a->nivel == 1 ? 2 : 3;
+    a->penalidadeErro = 5.0f + 5.0f * a->nivel;
+    a->penalidadeFila = 5.0f * a->nivel;
 }
 
 const Filme *filmeDaProgramacao(const Sessao *sessao, int indice) {
