@@ -598,7 +598,7 @@ static void desenharCinemaEstatico(void) {
 static void desenharFilaEspera(const Atendimento *atendimento) {
     desenharPainel(450, 550, 620, 85);
 
-    DrawText(TextFormat("FILA: %d CLIENTES (INCLUI O BALCAO)",
+    DrawText(TextFormat("FILA: %d/4 CLIENTES (INCLUI O BALCAO)",
                         atendimento->fila.quantidade),
              470, 558, 16, DOURADO);
 

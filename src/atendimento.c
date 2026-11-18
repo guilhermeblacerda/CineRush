@@ -16,7 +16,7 @@ static void configurarAtendimento(Atendimento *a, int nivel) {
     a->pacienciaInicial = 15.0f;
     a->maxIngressos = 2;
     a->grupoMinimo = 1;
-    a->grupoMaximo = 1;
+    a->grupoMaximo = 2;
     a->penalidadeErro = 10.0f;
     a->penalidadeFila = 5.0f;
 }
@@ -60,7 +60,35 @@ static int gerarCliente(Atendimento *a, const Sessao *sessao) {
 }
 
 static int gerarChegada(Atendimento *a, const Sessao *sessao) {
-    return gerarCliente(a, sessao);
+    int quantidade = a->grupoMinimo +
+                     rand() % (a->grupoMaximo - a->grupoMinimo + 1);
+    int entraram = 0;
+    int recusados = 0;
+
+    for (int i = 0; i < quantidade; i++) {
+        if (a->fila.quantidade >= CAPACIDADE_FILA) {
+            a->recusados++;
+            recusados++;
+            a->pontos -= a->penalidadeFila;
+        } else if (gerarCliente(a, sessao)) {
+            entraram++;
+        } else {
+            break;
+        }
+    }
+
+    if (recusados > 0) {
+        snprintf(a->aviso, sizeof(a->aviso),
+                 "Fila cheia: %d entrou/entraram, %d recusado(s). -%.0f pontos.",
+                 entraram, recusados, recusados * a->penalidadeFila);
+        a->tempoAviso = 2.5;
+    } else if (entraram > 0 && a->tempoAviso <= 0.0) {
+        snprintf(a->aviso, sizeof(a->aviso),
+                 "Chegaram %d cliente(s).", entraram);
+        a->tempoAviso = 2.5;
+    }
+
+    return entraram;
 }
 
 static void encerrarAtendimento(Atendimento *a) {
@@ -120,7 +148,7 @@ void atualizarAtendimento(Atendimento *a, const Sessao *sessao, float dt) {
     double restante = dt;
     const double epsilon = 0.00001;
 
-    while (restante > 0.0 && !a->encerrado) {
+    while (restante > epsilon && !a->encerrado) {
         double passo = restante;
         double ateChegada = a->intervaloChegada - a->tempoChegada;
         int recebeClientes = a->tempoRestante - ateChegada >
