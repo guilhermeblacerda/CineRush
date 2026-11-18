@@ -7,7 +7,8 @@ typedef struct {
     int id;
     Filme filmeDesejado;
     int querPipoca;
-    float paciencia;
+    double paciencia;
+    int quantidadeIngressos;
 } Cliente;
 
 Cliente criarCliente(int id, Filme filmeDesejado, int querPipoca, float paciencia);

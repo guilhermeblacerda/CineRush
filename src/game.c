@@ -1,4 +1,3 @@
-
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -246,7 +245,7 @@ static void atualizarPartida(Jogo *jogo) {
     if (IsKeyPressed(KEY_ENTER)) {
         if (jogo->sessao == NULL) {
             strcpy(jogo->avisoProgramacao, "Selecione pelo menos um filme.");
-        } else if (iniciarAtendimento(&jogo->atendimento, jogo->sessao)) {
+        } else if (iniciarAtendimento(&jogo->atendimento, jogo->sessao, jogo->nivel)) {
             jogo->telaAtual = TELA_ATENDIMENTO;
         } else {
             strcpy(jogo->avisoProgramacao, "Nao foi possivel iniciar o atendimento.");
@@ -255,24 +254,42 @@ static void atualizarPartida(Jogo *jogo) {
 }
 
 static void atualizarTelaAtendimento(Jogo *jogo) {
-    const Cliente *anterior = primeiroCliente(&jogo->atendimento.fila);
+    Atendimento *atendimento = &jogo->atendimento;
+    const Cliente *anterior = primeiroCliente(&atendimento->fila);
     int idAnterior = anterior != NULL ? anterior->id : -1;
-    atualizarAtendimento(&jogo->atendimento, jogo->sessao, GetFrameTime());
 
-    if (jogo->atendimento.encerrado) {
+    atualizarAtendimento(atendimento, jogo->sessao, GetFrameTime());
+
+    if (atendimento->encerrado) {
         jogo->partidaVencida = verificarVitoria(jogo);
         jogo->telaAtual = TELA_RESULTADO;
         return;
     }
 
-    const Cliente *atual = primeiroCliente(&jogo->atendimento.fila);
+    const Cliente *atual = primeiroCliente(&atendimento->fila);
+
     if (atual == NULL || atual->id != idAnterior)
         return;
 
-    if (IsKeyPressed(KEY_ONE))
-        atenderCliente(&jogo->atendimento, 0);
-    else if (IsKeyPressed(KEY_TWO))
-        atenderCliente(&jogo->atendimento, 1);
+    for (int i = 0; i < MAX_FILMES; i++) {
+        if (IsKeyPressed(KEY_ONE + i) &&
+            filmeDaProgramacao(jogo->sessao, i)) {
+            atendimento->filmeSelecionado = i;
+        }
+    }
+
+    if (IsKeyPressed(KEY_RIGHT) &&
+        atendimento->ingressosSelecionados < atendimento->maxIngressos)
+        atendimento->ingressosSelecionados++;
+
+    if (IsKeyPressed(KEY_LEFT) && atendimento->ingressosSelecionados > 1)
+        atendimento->ingressosSelecionados--;
+
+    if (IsKeyPressed(KEY_P))
+        atendimento->pipocaSelecionada = !atendimento->pipocaSelecionada;
+
+    if (IsKeyPressed(KEY_SPACE))
+        atenderCliente(atendimento, jogo->sessao);
 }
 
 static void atualizarResultado(Jogo *jogo) {
@@ -579,89 +596,152 @@ static void desenharCinemaEstatico(void) {
 }
 
 static void desenharFilaEspera(const Atendimento *atendimento) {
-    desenharPainel(450, 405, 620, 220);
-    int esperando = atendimento->fila.quantidade;
+    desenharPainel(450, 550, 620, 85);
+
+    DrawText(TextFormat("FILA: %d CLIENTES (INCLUI O BALCAO)",
+                        atendimento->fila.quantidade),
+             470, 558, 16, DOURADO);
+
     const NoCliente *no = atendimento->fila.inicio;
 
-    if (no != NULL) {
-        esperando--;
+    if (no != NULL)
         no = no->prox;
+
+    if (no == NULL)
+        DrawText("Ninguem aguardando na fila.", 470, 590, 14, CINZA);
+
+    for (int i = 0; no != NULL && i < 3; i++, no = no->prox) {
+        int y = 580 + i * 17;
+
+        desenharTextoAjustado(
+            TextFormat("#%02d  %s", no->cliente.id,
+                       no->cliente.filmeDesejado.nome),
+            470, y, 13, 365, CINZA
+        );
+
+        DrawText(TextFormat("%d ING. | %s PIPOCA",
+                            no->cliente.quantidadeIngressos,
+                            no->cliente.querPipoca ? "COM" : "SEM"),
+                 855, y, 12, BRANCO);
     }
-
-    DrawText(TextFormat("FILA FIFO | %d AGUARDANDO", esperando),
-             470, 420, 19, DOURADO);
-
-    int linha = 0;
-    while (no != NULL && linha < 5) {
-        int y = 453 + linha * 28;
-        DrawText(TextFormat("#%02d", no->cliente.id), 470, y, 16, BRANCO);
-        desenharTextoAjustado(no->cliente.filmeDesejado.nome,
-                             525, y, 16, 310, CINZA);
-        DrawText(no->cliente.querPipoca ? "COM PIPOCA" : "SO INGRESSO",
-                 895, y, 14, BRANCO);
-        no = no->prox;
-        linha++;
-    }
-
-    if (esperando == 0)
-        DrawText("Ninguem aguardando. Novos clientes chegarao.",
-                 470, 475, 16, CINZA);
-    if (esperando > 5)
-        DrawText(TextFormat("+ %d clientes na fila", esperando - 5),
-                 470, 598, 13, CINZA);
 }
 
 static void desenharTelaAtendimento(const Jogo *jogo) {
     const Atendimento *atendimento = &jogo->atendimento;
     const Cliente *cliente = primeiroCliente(&atendimento->fila);
+
     ClearBackground(FUNDO);
     DrawText("CINERUSH", 40, 22, 34, VERMELHO);
-    DrawText("ETAPA 2 | ATENDIMENTO", 245, 32, 18, BRANCO);
+    DrawText(TextFormat("ATENDIMENTO | NIVEL %d", atendimento->nivel),
+             245, 32, 18, BRANCO);
     DrawText(TextFormat("FECHA EM %.1f s", atendimento->tempoRestante),
              815, 25, 23, DOURADO);
-    DrawText(TextFormat("Proxima chegada: %.1f s",
-                        INTERVALO_CHEGADA - atendimento->tempoChegada),
-             815, 55, 14, CINZA);
+
+    double proxima = atendimento->intervaloChegada - atendimento->tempoChegada;
+
+    DrawText(
+        atendimento->tempoRestante - proxima > MARGEM_FECHAMENTO
+        ? TextFormat("Proxima chegada: %.1f s", proxima)
+        : "Entradas encerradas",
+        815, 55, 14, CINZA
+    );
+
     DrawLine(40, 80, 1060, 80, CINZA);
     desenharCinemaEstatico();
-    desenharPainel(450, 95, 620, 290);
-    DrawText("ATENDA O PRIMEIRO DA FILA", 470, 112, 22, DOURADO);
+    desenharPainel(450, 95, 620, 150);
 
     if (cliente != NULL) {
-        DrawText(TextFormat("CLIENTE #%02d", cliente->id), 470, 158, 22, BRANCO);
+        DrawText(TextFormat("PEDIDO DO CLIENTE #%02d", cliente->id),
+                 470, 110, 20, DOURADO);
+
         desenharTextoAjustado(cliente->filmeDesejado.nome,
-                             470, 196, 26, 565, BRANCO);
-        DrawText(cliente->querPipoca ? "INGRESSO + PIPOCA" : "APENAS INGRESSO",
-                 470, 238, 27, DOURADO);
-        float proporcao = cliente->paciencia / PACIENCIA_CLIENTE;
-        if (proporcao < 0.0f) proporcao = 0.0f;
-        if (proporcao > 1.0f) proporcao = 1.0f;
+                             470, 143, 24, 575, BRANCO);
+
+        DrawText(TextFormat("%d INGRESSO(S) | %s PIPOCA",
+                            cliente->quantidadeIngressos,
+                            cliente->querPipoca ? "COM" : "SEM"),
+                 470, 178, 20, DOURADO);
+
+        float proporcao = cliente->paciencia / atendimento->pacienciaInicial;
+
+        if (proporcao < 0.0f)
+            proporcao = 0.0f;
+        if (proporcao > 1.0f)
+            proporcao = 1.0f;
+
         DrawText(TextFormat("PACIENCIA: %.1f s", cliente->paciencia),
-                 470, 278, 15, CINZA);
-        DrawRectangle(470, 299, 575, 8, CARD);
-        DrawRectangle(470, 299, (int)(575 * proporcao), 8,
+                 470, 209, 13, CINZA);
+        DrawRectangle(470, 230, 575, 6, CARD);
+        DrawRectangle(470, 230, (int)(575 * proporcao), 6,
                       proporcao > 0.3f ? VERDE : VERMELHO);
-        desenharBotao(470, 324, 260, 42, "1 - SO INGRESSO", VERMELHO);
-        desenharBotao(745, 324, 300, 42, "2 - INGRESSO + PIPOCA", VERMELHO);
     } else {
-        DrawText("Aguardando o proximo cliente...", 470, 205, 23, BRANCO);
-        DrawText("As chegadas acontecem automaticamente.", 470, 247, 17, CINZA);
+        DrawText("Aguardando o proximo cliente...",
+                 470, 145, 23, BRANCO);
     }
 
-    DrawText(TextFormat("ACERTOS: %d | META: %d", atendimento->atendidos,
-                        META_ATENDIMENTOS), 45, 574, 20, VERDE);
-    DrawText(TextFormat("ERROS: %d | DESISTENCIAS: %d", atendimento->errados,
-                        atendimento->desistentes), 45, 600, 15, CINZA);
+    desenharPainel(450, 260, 620, 205);
+    DrawText("MONTE O PEDIDO: USE 1-8 PARA ESCOLHER O FILME",
+             470, 274, 16, BRANCO);
+
+    const Sessao *no = jogo->sessao;
+
+    for (int i = 0; no != NULL && i < MAX_FILMES; i++, no = no->prox) {
+        int x = 470 + (i % 2) * 295;
+        int y = 305 + (i / 2) * 35;
+        int selecionado = atendimento->filmeSelecionado == i;
+
+        DrawRectangle(x, y, 280, 29, selecionado ? VERMELHO : CARD);
+
+        desenharTextoAjustado(
+            TextFormat("%d - %s", i + 1, no->filme.nome),
+            x + 8, y + 6, 16, 264, BRANCO
+        );
+    }
+
+    desenharPainel(450, 478, 620, 60);
+
+    DrawText(TextFormat("INGRESSOS: %d (ESQ/DIR)",
+                        atendimento->ingressosSelecionados),
+             470, 489, 18, BRANCO);
+
+    DrawText(TextFormat("PIPOCA: %s (P)",
+                        atendimento->pipocaSelecionada ? "SIM" : "NAO"),
+             790, 489, 18, BRANCO);
+
+    DrawText(
+        atendimento->filmeSelecionado < 0
+        ? "Escolha um filme antes de entregar."
+        : "ESPACO - ENTREGAR PEDIDO",
+        470, 515, 15, DOURADO
+    );
+
+    DrawText(TextFormat("ACERTOS: %d | META: %d",
+                        atendimento->atendidos, META_ATENDIMENTOS),
+             45, 574, 20, VERDE);
+
+    DrawText(TextFormat("ERROS: %d | SAIRAM: %d | RECUSADOS: %d",
+                        atendimento->errados, atendimento->desistentes,
+                        atendimento->recusados),
+             45, 600, 13, CINZA);
+
     DrawText(TextFormat("SALDO: %+.0f PONTOS", atendimento->pontos),
              45, 621, 16, DOURADO);
+
     desenharFilaEspera(atendimento);
     DrawLine(40, 641, 1060, 641, CINZA);
 
-    if (atendimento->tempoAviso > 0.0f)
-        desenharTextoAjustado(atendimento->aviso, 45, 652, 18, 1010, DOURADO);
+    if (atendimento->tempoAviso > 0.0f) {
+        desenharTextoAjustado(atendimento->aviso,
+                             45, 652, 18, 1010, DOURADO);
+    }
 
-    DrawText("1 / 2 ATENDER | SO O PRIMEIRO PERDE PACIENCIA | RESTANTES AO FECHAR: -10 CADA",
-             45, 681, 13, CINZA);
+    DrawText(
+        TextFormat(
+            "SO O PRIMEIRO PERDE PACIENCIA | ERRO / DESISTENCIA / AO FECHAR: -%.0f | FILA CHEIA: -%.0f",
+            atendimento->penalidadeErro, atendimento->penalidadeFila
+        ),
+        45, 681, 13, CINZA
+    );
 }
 
 static void desenharResultado(const Jogo *jogo) {
@@ -686,8 +766,8 @@ static void desenharResultado(const Jogo *jogo) {
                         atendimento->atendidos, atendimento->errados,
                         atendimento->desistentes),
              240, 305, 19, BRANCO);
-    DrawText(TextFormat("Sem atendimento ao fechar: %d",
-                        atendimento->naoAtendidos),
+    DrawText(TextFormat("Ao fechar: %d | Recusados: %d",
+                        atendimento->naoAtendidos, atendimento->recusados),
              240, 338, 18, CINZA);
     DrawText(TextFormat("Saldo do atendimento: %+.0f pontos", atendimento->pontos),
              240, 372, 20, DOURADO);

@@ -1,9 +1,39 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "atendimento.h"
 
-static int gerarCliente(Atendimento *atendimento, const Sessao *sessao) {
+static void limparPedido(Atendimento *a) {
+    a->filmeSelecionado = -1;
+    a->ingressosSelecionados = 1;
+    a->pipocaSelecionada = 0;
+}
+
+static void configurarAtendimento(Atendimento *a, int nivel) {
+    a->nivel = nivel < 1 ? 1 : (nivel > 3 ? 3 : nivel);
+    a->intervaloChegada = 8.0;
+    a->pacienciaInicial = 15.0f;
+    a->maxIngressos = 2;
+    a->grupoMinimo = 1;
+    a->grupoMaximo = 1;
+    a->penalidadeErro = 10.0f;
+    a->penalidadeFila = 5.0f;
+}
+
+const Filme *filmeDaProgramacao(const Sessao *sessao, int indice) {
+    if (indice < 0)
+        return NULL;
+
+    while (sessao != NULL && indice > 0) {
+        sessao = sessao->prox;
+        indice--;
+    }
+
+    return sessao != NULL ? &sessao->filme : NULL;
+}
+
+static int gerarCliente(Atendimento *a, const Sessao *sessao) {
     int quantidade = 0;
 
     for (const Sessao *no = sessao; no != NULL; no = no->prox)
@@ -12,162 +42,177 @@ static int gerarCliente(Atendimento *atendimento, const Sessao *sessao) {
     if (quantidade == 0)
         return 0;
 
-    int indice = rand() % quantidade;
-    const Sessao *escolhida = sessao;
+    const Filme *filme = filmeDaProgramacao(sessao, rand() % quantidade);
+    Cliente cliente = criarCliente(a->proximoId, *filme,
+                                   rand() % 2, a->pacienciaInicial);
 
-    while (indice-- > 0)
-        escolhida = escolhida->prox;
+    cliente.quantidadeIngressos = 1 + rand() % a->maxIngressos;
 
-    Cliente cliente = criarCliente(atendimento->proximoId,
-                                   escolhida->filme,
-                                   rand() % 2,
-                                   PACIENCIA_CLIENTE);
-
-    if (!enfileirar(&atendimento->fila, cliente)) {
-        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-                 "Nao foi possivel adicionar outro cliente.");
-        atendimento->tempoAviso = 2.5f;
+    if (!enfileirar(&a->fila, cliente)) {
+        snprintf(a->aviso, sizeof(a->aviso), "Falha ao criar cliente.");
+        a->tempoAviso = 2.5;
         return 0;
     }
 
-    atendimento->proximoId++;
-    atendimento->totalCriados++;
-
-    if (atendimento->tempoAviso <= 0.0f) {
-        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-                 "Cliente %d entrou na fila.", cliente.id);
-        atendimento->tempoAviso = 2.5f;
-    }
-
+    a->proximoId++;
+    a->totalCriados++;
     return 1;
 }
 
-static void encerrarAtendimento(Atendimento *atendimento) {
-    if (atendimento->encerrado)
-        return;
-
-    atendimento->naoAtendidos = atendimento->fila.quantidade;
-    atendimento->pontos -= atendimento->naoAtendidos * PENALIDADE_CLIENTE;
-    liberarFila(&atendimento->fila);
-    atendimento->tempoRestante = 0.0f;
-    atendimento->encerrado = 1;
+static int gerarChegada(Atendimento *a, const Sessao *sessao) {
+    return gerarCliente(a, sessao);
 }
 
-void inicializarAtendimento(Atendimento *atendimento) {
-    if (atendimento == NULL)
+static void encerrarAtendimento(Atendimento *a) {
+    if (a->encerrado)
         return;
 
-    *atendimento = (Atendimento){0};
-    inicializarFila(&atendimento->fila);
-    atendimento->proximoId = 1;
-    atendimento->encerrado = 1;
+    a->naoAtendidos = a->fila.quantidade;
+    a->pontos -= a->naoAtendidos * a->penalidadeErro;
+    liberarFila(&a->fila);
+    limparPedido(a);
+    a->tempoRestante = 0.0;
+    a->encerrado = 1;
 }
 
-void liberarAtendimento(Atendimento *atendimento) {
-    if (atendimento == NULL)
+void inicializarAtendimento(Atendimento *a) {
+    if (a == NULL)
         return;
 
-    liberarFila(&atendimento->fila);
-    atendimento->encerrado = 1;
+    *a = (Atendimento){0};
+    inicializarFila(&a->fila);
+    configurarAtendimento(a, 1);
+    limparPedido(a);
+    a->proximoId = 1;
+    a->encerrado = 1;
 }
 
-int iniciarAtendimento(Atendimento *atendimento, const Sessao *sessao) {
-    if (atendimento == NULL || sessao == NULL)
+void liberarAtendimento(Atendimento *a) {
+    if (a == NULL)
+        return;
+
+    liberarFila(&a->fila);
+    a->encerrado = 1;
+}
+
+int iniciarAtendimento(Atendimento *a, const Sessao *sessao, int nivel) {
+    if (a == NULL || sessao == NULL)
         return 0;
 
-    liberarAtendimento(atendimento);
-    inicializarAtendimento(atendimento);
-    atendimento->tempoRestante = DURACAO_EXPEDIENTE;
-    atendimento->encerrado = 0;
+    liberarAtendimento(a);
+    inicializarAtendimento(a);
+    configurarAtendimento(a, nivel);
+    a->tempoRestante = DURACAO_EXPEDIENTE;
+    a->encerrado = 0;
 
-    if (!gerarCliente(atendimento, sessao)) {
-        liberarAtendimento(atendimento);
+    if (!gerarChegada(a, sessao)) {
+        liberarAtendimento(a);
         return 0;
     }
 
     return 1;
 }
 
-void atualizarAtendimento(Atendimento *atendimento, const Sessao *sessao, float dt) {
-    if (atendimento == NULL || atendimento->encerrado ||
-        !isfinite(dt) || dt <= 0.0f)
+void atualizarAtendimento(Atendimento *a, const Sessao *sessao, float dt) {
+    if (a == NULL || a->encerrado || !isfinite(dt) || dt <= 0.0f)
         return;
 
     double restante = dt;
-    while (restante > 0.0 && !atendimento->encerrado) {
-        double passo = restante;
-        double ateChegada = INTERVALO_CHEGADA - atendimento->tempoChegada;
-        Cliente *cliente = atendimento->fila.inicio != NULL
-                         ? &atendimento->fila.inicio->cliente : NULL;
+    const double epsilon = 0.00001;
 
-        if (passo > atendimento->tempoRestante)
-            passo = atendimento->tempoRestante;
-        if (passo > ateChegada)
+    while (restante > 0.0 && !a->encerrado) {
+        double passo = restante;
+        double ateChegada = a->intervaloChegada - a->tempoChegada;
+        int recebeClientes = a->tempoRestante - ateChegada >
+                             MARGEM_FECHAMENTO + epsilon;
+        Cliente *cliente = a->fila.inicio != NULL
+                         ? &a->fila.inicio->cliente : NULL;
+
+        if (passo > a->tempoRestante)
+            passo = a->tempoRestante;
+        if (recebeClientes && passo > ateChegada)
             passo = ateChegada;
         if (cliente != NULL && passo > cliente->paciencia)
             passo = cliente->paciencia;
 
-        atendimento->tempoRestante -= passo;
-        atendimento->tempoChegada += passo;
-        atendimento->tempoAviso -= passo;
+        a->tempoRestante -= passo;
+        a->tempoChegada += passo;
+        a->tempoAviso -= passo;
+
         if (cliente != NULL)
             cliente->paciencia -= passo;
+
         restante -= passo;
 
-        if (atendimento->tempoRestante <= 0.0001f) {
-            encerrarAtendimento(atendimento);
+        if (a->tempoRestante <= epsilon) {
+            encerrarAtendimento(a);
             break;
         }
 
-        if (cliente != NULL && cliente->paciencia <= 0.0001f) {
+        if (cliente != NULL && cliente->paciencia <= epsilon) {
             int id = cliente->id;
-            desenfileirar(&atendimento->fila, NULL);
-            atendimento->desistentes++;
-            atendimento->pontos -= PENALIDADE_CLIENTE;
-            snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-                     "Cliente %d perdeu a paciencia: -%.0f pontos.",
-                     id, PENALIDADE_CLIENTE);
-            atendimento->tempoAviso = 2.5f;
+            desenfileirar(&a->fila, NULL);
+            a->desistentes++;
+            a->pontos -= a->penalidadeErro;
+            limparPedido(a);
+
+            snprintf(a->aviso, sizeof(a->aviso),
+                     "Cliente %d desistiu: -%.0f pontos.",
+                     id, a->penalidadeErro);
+            a->tempoAviso = 2.5;
         }
 
-        if (atendimento->tempoChegada >= INTERVALO_CHEGADA - 0.0001f) {
-            atendimento->tempoChegada = 0.0f;
-            gerarCliente(atendimento, sessao);
+        if (recebeClientes &&
+            a->tempoChegada >= a->intervaloChegada - epsilon) {
+            a->tempoChegada = 0.0;
+            gerarChegada(a, sessao);
         }
     }
 }
 
-int atenderCliente(Atendimento *atendimento, int oferecerPipoca) {
-    if (atendimento == NULL || atendimento->encerrado ||
-        (oferecerPipoca != 0 && oferecerPipoca != 1))
+int atenderCliente(Atendimento *a, const Sessao *sessao) {
+    if (a == NULL || a->encerrado || filaVazia(&a->fila))
         return 0;
+
+    const Filme *filme = filmeDaProgramacao(sessao, a->filmeSelecionado);
+
+    if (filme == NULL || a->ingressosSelecionados < 1 ||
+        a->ingressosSelecionados > a->maxIngressos ||
+        (a->pipocaSelecionada != 0 && a->pipocaSelecionada != 1)) {
+        snprintf(a->aviso, sizeof(a->aviso),
+                 "Escolha um filme e uma quantidade valida antes de entregar.");
+        a->tempoAviso = 2.5;
+        return 0;
+    }
 
     Cliente cliente;
 
-    if (!desenfileirar(&atendimento->fila, &cliente))
+    if (!desenfileirar(&a->fila, &cliente))
         return 0;
 
-    int correto = cliente.querPipoca == oferecerPipoca;
+    int correto = strcmp(cliente.filmeDesejado.nome, filme->nome) == 0 &&
+                  cliente.quantidadeIngressos == a->ingressosSelecionados &&
+                  cliente.querPipoca == a->pipocaSelecionada;
 
     if (correto) {
-        atendimento->atendidos++;
-        atendimento->pontos += PONTOS_ACERTO;
-        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-                 "Cliente %d atendido corretamente: +%.0f pontos.",
-                 cliente.id, PONTOS_ACERTO);
+        a->atendidos++;
+        a->pontos += PONTOS_ACERTO;
     } else {
-        atendimento->errados++;
-        atendimento->pontos -= PENALIDADE_CLIENTE;
-        snprintf(atendimento->aviso, sizeof(atendimento->aviso),
-                 "Pedido do cliente %d estava errado: -%.0f pontos.",
-                 cliente.id, PENALIDADE_CLIENTE);
+        a->errados++;
+        a->pontos -= a->penalidadeErro;
     }
 
-    atendimento->tempoAviso = 2.5f;
+    snprintf(a->aviso, sizeof(a->aviso),
+             "Cliente %d: pedido %s (%+.0f pontos).", cliente.id,
+             correto ? "correto" : "errado",
+             correto ? PONTOS_ACERTO : -a->penalidadeErro);
+
+    a->tempoAviso = 2.5;
+    limparPedido(a);
     return correto ? 1 : -1;
 }
 
-int metaAtendimentoCumprida(const Atendimento *atendimento) {
-    return atendimento != NULL && atendimento->encerrado &&
-           atendimento->atendidos >= META_ATENDIMENTOS;
+int metaAtendimentoCumprida(const Atendimento *a) {
+    return a != NULL && a->encerrado &&
+           a->atendidos >= META_ATENDIMENTOS;
 }

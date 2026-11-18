@@ -7,6 +7,7 @@ Cliente criarCliente(int id, Filme filmeDesejado, int querPipoca, float pacienci
     cliente.filmeDesejado = filmeDesejado;
     cliente.querPipoca = querPipoca != 0;
     cliente.paciencia = paciencia > 0.0f ? paciencia : 0.0f;
+    cliente.quantidadeIngressos = 1;
 
     return cliente;
 }
