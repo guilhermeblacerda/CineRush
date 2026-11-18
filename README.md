@@ -1,35 +1,44 @@
-# CineRush
+## Sistema de atendimento
 
+Após montar a programação, o jogador inicia o expediente do cinema, no qual deve atender clientes que chegam em grupos e entram em uma fila.
 
-Projeto desenvolvido em C para a disciplina de Algoritmos e Estruturas de Dados (AED).
+Cada cliente solicita um filme da programação, uma quantidade de ingressos e, opcionalmente, pipoca. O jogador precisa preparar e entregar o pedido corretamente antes que a paciência do cliente acabe.
 
-O CineRush é um jogo em que o jogador organiza uma sessão de cinema, selecionando filmes de um catálogo com o objetivo de obter a maior pontuação possível, respeitando o limite de 300 minutos.
+A fila utiliza a estrutura FIFO (First In, First Out), atendendo os clientes na ordem de chegada, com capacidade máxima de quatro pessoas. Quando a fila está cheia, novos clientes são recusados, gerando penalidades.
 
-## Estruturas e algoritmos
+## Controles do atendimento
 
-- **Lista simplesmente encadeada:** armazena os filmes selecionados e permite operações de inserção, remoção e consulta.
-- **Insertion Sort:** ordena o catálogo por duração, nota ou popularidade.
-- **Raylib:** biblioteca utilizada para a interface gráfica e interação com o jogador.
+- **1 a 8:** selecionar o filme solicitado.
+- **Setas esquerda/direita:** ajustar a quantidade de ingressos.
+- **P:** adicionar ou remover pipoca do pedido.
+- **Espaço:** confirmar e entregar o pedido.
 
-## Como executar
+## Dificuldade progressiva
 
-É necessário ter um compilador C (GCC) e a biblioteca raylib configurados.
+O jogo possui três níveis de dificuldade, que modificam a frequência de chegada dos clientes, a quantidade de pessoas por grupo, a paciência e a complexidade dos pedidos.
 
-Na pasta do projeto, compile os arquivos `main.c`, `game.c`, `filmes.c` e `lista.c`, vinculando a biblioteca raylib e suas dependências.
+| Característica | Nível 1 | Nível 2 | Nível 3 |
+|---|---|---|---|
+| Clientes por grupo | 1–2 | 1–3 | 2–3 |
+| Intervalo de chegada | 8 s | 7 s | 6 s |
+| Paciência | 15 s | 12 s | 10 s |
+| Ingressos por pedido | 1–2 | 1–3 | 1–4 |
 
-Execute o programa gerado para iniciar o jogo.
+## Pontuação e resultados
 
-## Controles
+- **Atendimento correto:** +20 pontos.
+- **Pedido incorreto:** penalidade conforme o nível.
+- **Cliente que perde a paciência:** penalidade conforme o nível.
+- **Fila cheia:** penalidade por cliente recusado.
 
-- **Enter:** iniciar ou finalizar a partida e retornar ao menu.
-- **1 a 8:** selecionar filmes.
-- **Backspace:** remover o último filme selecionado.
-- **D / N / P:** ordenar por duração, nota ou popularidade.
-- **Esc:** sair do jogo.
+O expediente dura 45 segundos. Ao final, a pontuação da programação é combinada com os resultados dos atendimentos.
 
+Para concluir o nível, o jogador precisa cumprir as metas de filmes e pontuação e realizar pelo menos cinco atendimentos corretos.
 
-## Desafios
+## Ranking
 
-Cada partida apresenta um desafio sorteado entre seis objetivos: Noite dos Críticos, Sessão de Sucesso, Tempo é Ouro, Festival Diversificado, Maratona Cinematográfica e Obras-Primas.
+O jogo possui um ranking que registra as pontuações dos jogadores, permitindo comparar os resultados obtidos nas partidas.
 
-A pontuação final é calculada de acordo com o objetivo sorteado. No menu inicial, pressione **H** para consultar os desafios.
+## Testes
+
+A pasta `testes` contém os arquivos `testefila.c` e `testeatendimento.c`, utilizados para verificar o funcionamento das estruturas de dados e das mecânicas de atendimento.
