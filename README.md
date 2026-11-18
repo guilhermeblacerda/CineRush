@@ -1,3 +1,16 @@
+## Como executar
+
+Para executar o CineRush no Windows, é necessário ter
+GCC, Raylib e Make instalados e configurados.
+
+Abra o terminal na pasta principal do projeto e execute:
+
+    make
+
+Após a compilação, execute:
+
+    ./CineRush.exe
+
 ## Sistema de atendimento
 
 Após montar a programação, o jogador inicia o expediente do cinema, no qual deve atender clientes que chegam em grupos e entram em uma fila.
